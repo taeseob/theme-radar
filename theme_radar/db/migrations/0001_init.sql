@@ -70,7 +70,7 @@ CREATE TABLE classification_scheme (
 CREATE TABLE classification_group (
     scheme_code   TEXT    NOT NULL REFERENCES classification_scheme (scheme_code),
     group_code    TEXT    NOT NULL,               -- 분류 체계의 공식 코드 (WI620, 45). 다른 뜻으로 재사용하지 않는다
-    group_name    TEXT    NOT NULL,               -- 화면 표시명 (한국어)
+    group_name    TEXT    NOT NULL,               -- 화면 표시명 (WI26 한국어, GICS 영문)
     group_name_en TEXT,
     sort_order    INTEGER NOT NULL DEFAULT 0,
     color_hex     TEXT CHECK (color_hex GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),  -- 차트 고정 색상

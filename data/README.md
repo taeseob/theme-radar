@@ -9,6 +9,8 @@
 | `raw/` | 수집 원본 (HTML 1건, JSON 27건). 재파싱·감사용 | — |
 | `gics_classification.csv` | GICS 4단계 분류표 + 소분류 정의문 (미국 시장용, [§5](#5-gics_classificationcsv)) | 163 |
 | `gics_sp500_constituents.csv` | S&P 500 구성종목 → GICS 4단계 코드 매핑 ([§6](#6-gics_sp500_constituentscsv)) | 503 |
+| `group_colors.csv` | 섹터별 차트 고정 색상 (산업 계열 8색, [02 §3.4](../docs/02-domain-and-data-model.md#34-classification_scheme--classification_group)) | 37 |
+| `theme_radar.sqlite3` | 애플리케이션 DB (git 제외, `python -m theme_radar init-db`로 생성) | — |
 
 수집 스크립트: [`scripts/fetch_wi26.py`](../scripts/fetch_wi26.py) — Python 3.9+ 표준 라이브러리만 사용한다.
 

@@ -43,8 +43,19 @@ python -m venv .venv
 .venv\Scripts\python -m pytest                             # 테스트
 ```
 
+처음 데이터를 적재하는 순서 (명령 설명은 [07 §5.2](docs/07-price-ingestion.md#52-명령)):
+
+```bash
+.venv\Scripts\python -m theme_radar prices universe --market KR
+.venv\Scripts\python -m theme_radar prices universe --market US
+.venv\Scripts\python -m theme_radar load-mapping --scheme WI26
+.venv\Scripts\python -m theme_radar load-mapping --scheme GICS
+.venv\Scripts\python -m theme_radar prices backfill --market KR   # 약 1시간
+.venv\Scripts\python -m theme_radar prices backfill --market US
+```
+
 - 의존성을 바꿀 때는 `requirements.txt` / `requirements-dev.txt`를 고치고 설치한 뒤 `pip freeze --exclude pip` 결과로 `requirements.lock`을 갱신한다.
-- 이 PC에만 해당하는 설정은 `config.local.toml`(git 제외)에 적는다.
+- 이 PC에만 해당하는 설정은 `config.local.toml`(git 제외)에 적는다. 미국 수집에는 SEC 연락처가 필요하다: `[sec] user_agent = "theme-radar 연락처이메일"`.
 
 ## 표기 규약
 
