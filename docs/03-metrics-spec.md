@@ -102,6 +102,7 @@ rank_ret(S, t) = R(S, t) 내림차순 순위
 - 결정적 정렬을 위한 tie-break 순서: `R(S,t)` desc → `base_weight` desc → `group_code` asc.
 - `rank_delta(S, t) = rank_ret(S, t-1) - rank_ret(S, t)`. 양수면 순위 상승.
 - 직전 기간에 그룹이 존재하지 않으면 `rank_ret_prev = NULL`, `rank_delta = NULL` (범프 차트에서 선을 잇지 않는다).
+- 순위는 분류 체계의 그룹에만 준다. 미매핑 의사 그룹(`UNMAPPED`)은 `rank_ret = NULL`이며 순위 계산에서 빠진다. 기여도 가산성을 위해 행은 남는다([§7.2](#72-가산성)).
 - 그룹 수가 기간마다 달라질 수 있으므로(신설/폐지 섹터), 순위의 최댓값은 기간별 그룹 수에 종속된다.
 
 ## 7. 시장 기여도 분해

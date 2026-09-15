@@ -192,6 +192,7 @@ AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 
 - 인덱스: 구간 조회용 `(universe_code, scheme_code, period_type, period_seq)`, 섹터 시계열용 `(…, group_code, period_seq)`. 단일 기간 스냅샷은 키 선두로 찾는다.
 - 비배타 스킴에서는 `base_weight`, `contribution`, `contrib_share`가 `NULL`이다.
+- `rank_ret`은 분류 체계의 그룹에만 있다. 미매핑(`UNMAPPED`) 행은 순위가 `NULL`이다 ([§9](#9-결정-기록) S-16).
 - 하락 기여 기준 집중도(`top1/3/5_neg_contrib_share`)를 함께 저장한다([03 §9.1](03-metrics-spec.md#91-상위-기여-집중도)).
 
 ### 5.5 group_member_contribution
@@ -299,4 +300,5 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
 | S-12 | 티커 변경 이력 (`security_alias`) | 두지 않는다. 티커가 바뀌면 기존 종목의 `ticker`를 갱신한다 | 긴 기간을 조회하지 않으므로 과거 티커를 쓸 일이 없다 |
 | S-13 | GICS 섹터 표시명 | 영문명을 쓰고 한국어 이름은 두지 않는다. 섹터 색상은 개발 측에서 정한다 | 사용자 결정 (2026-09-15) |
 | S-14 | 분류 매핑 이력 | 현재 스냅샷 하나를 전 기간에 적용한다. 과거 이력은 만들지 않는다. 다시 적재하면 스킴의 매핑을 통째로 바꾸고 재계산을 요청한다 | 매핑이 실제로 바뀔 때 이력 처리를 정한다 |
+| S-16 | 미매핑 순위 | `UNMAPPED`는 순위를 받지 않는다(`rank_ret` NULL 허용, 마이그레이션 0002) | 분류 체계의 섹터가 아니다. 기여도 가산성을 위해 행은 남긴다 |
 | S-15 | 섹터 색상 | 8색 범주형 팔레트를 산업 계열 단위로 배정한다 (`data/group_colors.csv`) | 검증된 8색을 넘는 색을 만들면 색각 이상에서 구분되지 않는다. 섹터 식별은 라벨과 호버가 맡는다 |

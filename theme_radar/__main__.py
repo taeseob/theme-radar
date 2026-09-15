@@ -48,6 +48,54 @@ def cmd_load_mapping(args: argparse.Namespace, config: dict[str, Any]) -> int:
     return 0
 
 
+def _market_today(market: str) -> str:
+    from datetime import datetime
+
+    from theme_radar.prices.context import MARKET_TZ
+    return datetime.now(MARKET_TZ[market]).date().isoformat()
+
+
+def _logger(market: str):
+    import time
+    started = time.monotonic()
+
+    def log(message: str) -> None:
+        print(f"[{market} {time.monotonic() - started:7.1f}s] {message}", flush=True)
+    return log
+
+
+def run_aggregate(con, args: argparse.Namespace, config: dict[str, Any]) -> int:
+    from theme_radar.calc import aggregate
+    from theme_radar.jobs import run_job
+
+    log = _logger(args.market)
+    with run_job(con, "aggregate", args.market, target_scope="full" if args.full else None) as run:
+        aggregate.run(con, run, args.market, _market_today(args.market), args.full, log)
+        failed = [f"{c.rule_code} {c.scope}: {c.detail}" for c in run.checks if not c.passed]
+        log(f"완료. 파생 행 {run.row_count}, 검증 위반 {len(failed)}건")
+        for line in failed[:20]:
+            log(f"  {line[:300]}")
+        if len(failed) > 20:
+            log(f"  ... 그 밖 {len(failed) - 20}건은 validation_result에 있다")
+    return 2 if run.blocked else 0
+
+
+def cmd_aggregate(args: argparse.Namespace, config: dict[str, Any]) -> int:
+    return run_aggregate(open_db(args, config), args, config)
+
+
+def cmd_daily(args: argparse.Namespace, config: dict[str, Any]) -> int:
+    """수집 → 집계까지 이어서 실행한다 (docs/09 §4.6). 작업 스케줄러가 부르는 명령이다."""
+    from theme_radar.prices.cli import collect_market
+
+    con = open_db(args, config)
+    code = collect_market(con, config, args.market, "daily", save_raw=not args.no_raw)
+    if code:
+        return code
+    args.full = False
+    return run_aggregate(con, args, config)
+
+
 def build_parser() -> argparse.ArgumentParser:
     from theme_radar.prices.cli import add_commands as add_prices_commands
 
@@ -64,6 +112,19 @@ def build_parser() -> argparse.ArgumentParser:
     load_mapping.set_defaults(func=cmd_load_mapping)
 
     add_prices_commands(commands, open_db)
+
+    aggregate = commands.add_parser("aggregate", help="기간 확정과 파생 테이블 산출 (docs/04 §3)")
+    aggregate.add_argument("--market", required=True, choices=["KR", "US"])
+    aggregate.add_argument("--full", action="store_true", help="전 기간을 다시 계산한다")
+    aggregate.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
+    aggregate.set_defaults(func=cmd_aggregate)
+
+    daily = commands.add_parser("daily", help="수집과 집계를 이어서 실행한다 (작업 스케줄러용)")
+    daily.add_argument("--market", required=True, choices=["KR", "US"])
+    daily.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
+    daily.add_argument("--no-raw", action="store_true", help="수집 원문을 저장하지 않는다")
+    daily.set_defaults(func=cmd_daily)
+
     return parser
 
 

@@ -52,6 +52,15 @@ python -m venv .venv
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS
 .venv\Scripts\python -m theme_radar prices backfill --market KR   # 약 1시간
 .venv\Scripts\python -m theme_radar prices backfill --market US
+.venv\Scripts\python -m theme_radar aggregate --market KR --full   # 파생 지표 산출 (약 10초)
+.venv\Scripts\python -m theme_radar aggregate --market US --full
+```
+
+이후 운영은 시장마다 하루 한 번 `daily`를 실행한다. 수집부터 집계까지 이어서 돈다.
+
+```bash
+.venv\Scripts\python -m theme_radar daily --market KR
+.venv\Scripts\python -m theme_radar daily --market US
 ```
 
 - 의존성을 바꿀 때는 `requirements.txt` / `requirements-dev.txt`를 고치고 설치한 뒤 `pip freeze --exclude pip` 결과로 `requirements.lock`을 갱신한다.

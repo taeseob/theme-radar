@@ -8,6 +8,9 @@ import pytest
 from theme_radar.__main__ import main
 from theme_radar.config import ROOT
 from theme_radar.db import connect, migrate, schema_version, transaction
+from theme_radar.db.migrate import list_migrations
+
+LATEST = len(list_migrations())
 
 EXPECTED_TABLES = {
     # 마스터
@@ -31,7 +34,7 @@ def test_init_creates_all_tables_as_strict(con):
     assert table_names(con) == EXPECTED_TABLES
     strict = dict(con.execute("SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'"))
     assert {name for name, is_strict in strict.items() if not is_strict} == set()
-    assert schema_version(con) == 1
+    assert schema_version(con) == LATEST
 
 
 def test_seed_codes(con):
@@ -44,9 +47,9 @@ def test_seed_codes(con):
 
 def test_migrate_twice_applies_nothing(db_path):
     con = connect(db_path)
-    assert [m.version for m in migrate(con)] == [1]
+    assert [m.version for m in migrate(con)] == list(range(1, LATEST + 1))
     assert migrate(con) == []
-    assert schema_version(con) == 1
+    assert schema_version(con) == LATEST
     con.close()
 
 
@@ -103,7 +106,7 @@ def test_migration_numbers_must_be_contiguous(tmp_path):
 
 def test_db_newer_than_code_is_rejected(db_path):
     con = connect(db_path)
-    con.execute("PRAGMA user_version = 99")
+    con.execute("PRAGMA user_version = 99")   # 코드가 아는 최신 마이그레이션보다 높은 버전
     with pytest.raises(RuntimeError, match="99"):
         migrate(con)
     con.close()
@@ -125,5 +128,5 @@ def test_cli_runs_as_module(tmp_path):
     )
     assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
     con = connect(path)
-    assert schema_version(con) == 1
+    assert schema_version(con) == LATEST
     con.close()

@@ -40,7 +40,7 @@
 | `ingest-mapping` | KR/US | 온디맨드(파일 도착 시) | 분류 매핑 적재 |
 | `period-close` | KR/US | 시세 적재 직후 | 기간 경계·`is_closed` 갱신 |
 | `aggregate` | KR/US | `period-close` 직후 | W·M 단위 파생 산출 |
-| `validate` | KR/US | `aggregate` 직후 | 검증 실패 시 배포 차단 |
+| `validate` | KR/US | `aggregate` 안에서 기간마다 | 검증 실패한 기간은 커밋하지 않는다 |
 
 - 각 작업은 함수로 두고, 작업 스케줄러가 실행하는 CLI `daily --market KR|US`가 시세 적재부터 `validate`까지 순서대로 부른다. 앞 단계가 실패하면 뒤 단계를 실행하지 않는다 ([09 §4.6](09-tech-stack.md#46-배치-실행과-운영)).
 - 응답 캐시를 미리 채우는 작업은 두지 않는다. 서버 측 캐시가 없기 때문이다 ([§6.2](#62-조회-경로)).
@@ -63,7 +63,7 @@
 6. 그룹 수익률·비중·기여도·집중도 산출 → `group_period_stat`
 7. 순위 부여 (`rank_ret`, `rank_contrib`) 및 직전 기간 순위 조인 (`rank_delta`)
 8. 포함 종목 전체의 종목 기여도 → `group_member_contribution`
-9. 검증 (V-1 ~ V-9)
+9. 검증 (V-1 ~ V-9). 차단 규칙 위반이면 그 기간의 트랜잭션을 되돌린다
 10. `calc_version`, `calculated_at` 기록 후 커밋
 
 - 4~8단계는 `(universe, scheme, period_type)` 조합별로 병렬 실행 가능하다.
@@ -87,7 +87,7 @@
 - 재계산 요청은 DB 테이블에 쌓아 두고, `aggregate` 시작 시 처리한다.
 - 재계산은 **기간 오름차순**으로 수행한다(`rank_delta` 의존성).
 - 재계산 요청이 남아 있는 구간의 API 응답에는 `stale = true` 플래그를 실어 보낸다.
-- 파생 결과는 `(universe, scheme, period_type)` 조합 하나를 한 트랜잭션으로 쓰고, V-1 ~ V-7을 통과해야 커밋한다. 위반하면 롤백하므로 API는 이전 값을 계속 읽는다. `calc_version`이 바뀌는 전량 재계산도 같은 방식으로 전환한다 ([09 §4.1](09-tech-stack.md#41-db-sqlite)).
+- 파생 결과는 **기간 하나**를 한 트랜잭션으로 쓰고, V-1 ~ V-7을 통과해야 커밋한다. 위반한 기간만 롤백되고 나머지 기간은 저장된다. 조회는 커밋 전 값을 계속 읽는다 ([09 §4.1](09-tech-stack.md#41-db-sqlite)).
 
 ## 5. 데이터 품질 검증
 

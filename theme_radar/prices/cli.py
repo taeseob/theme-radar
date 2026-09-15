@@ -44,20 +44,25 @@ def _universe(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
 
 
 def _collect(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
-    con = open_db(args, config)
-    full = args.mode != "daily"
-    only = args.only
-    with run_job(con, f"prices-{args.mode}", args.market, target_scope=",".join(only) if only else None) as run:
-        ctx = build_context(con, run, config, args.market, full=full, save_raw=not args.no_raw)
+    return collect_market(open_db(args, config), config, args.market, args.mode, args.only, not args.no_raw)
+
+
+def collect_market(con, config: dict[str, Any], market: str, mode: str, only: list[str] | None = None,
+                   save_raw: bool = True) -> int:
+    """수집 흐름 한 번. mode: backfill | daily | reconcile | restate (daily만 증분이고 나머지는 전 구간)"""
+    args = argparse.Namespace(market=market, no_raw=not save_raw)
+    full = mode != "daily"
+    with run_job(con, f"prices-{mode}", market, target_scope=",".join(only) if only else None) as run:
+        ctx = build_context(con, run, config, market, full=full, save_raw=save_raw)
         _prepare(ctx)
-        module = MARKET_MODULES[args.market]
-        scheme = "WI26" if args.market == "KR" else "GICS"
+        module = MARKET_MODULES[market]
+        scheme = "WI26" if market == "KR" else "GICS"
         if not con.execute("SELECT 1 FROM security_group_map WHERE scheme_code = ? LIMIT 1", (scheme,)).fetchone():
             ctx.log(f"주의: {scheme} 매핑이 비어 있다. 특이사항의 섹터 값이 비므로 먼저 load-mapping --scheme {scheme}을 실행한다")
         delistings = module.update_universe(ctx) if not only else None
         module.update_calendar(ctx)
         module.collect_prices(ctx, only)
-        if args.market == "KR":
+        if market == "KR":
             if delistings is None:
                 from theme_radar.prices.sources import fdr_krx
                 delistings = fdr_krx.fetch_delistings(ctx.raw_dir, ctx.start)
