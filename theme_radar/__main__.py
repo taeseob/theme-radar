@@ -96,6 +96,17 @@ def cmd_daily(args: argparse.Namespace, config: dict[str, Any]) -> int:
     return run_aggregate(con, args, config)
 
 
+def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
+    """API와 화면을 띄운다 (docs/09 §4.3). 127.0.0.1에만 바인딩한다."""
+    from theme_radar.api.app import serve
+
+    if args.port:
+        config = {**config, "api": {**config["api"], "port": args.port}}
+    print(f"http://{config['api']['host']}:{config['api']['port']} (문서: /docs)")
+    serve(config)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     from theme_radar.prices.cli import add_commands as add_prices_commands
 
@@ -124,6 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
     daily.add_argument("--no-raw", action="store_true", help="수집 원문을 저장하지 않는다")
     daily.set_defaults(func=cmd_daily)
+
+    serve = commands.add_parser("serve", help="API와 화면을 띄운다 (docs/05, 06)")
+    serve.add_argument("--port", type=int, help="기본값: config.toml의 api.port")
+    serve.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
+    serve.set_defaults(func=cmd_serve)
 
     return parser
 

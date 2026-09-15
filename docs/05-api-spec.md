@@ -208,6 +208,8 @@ Base URL: `/api/v1`
 ```
 
 - `contribution_share`는 `|universe_return| < 0.0005`일 때 `null` ([03 §7.3](03-metrics-spec.md#73-기여-비중)).
+- `badges` 판정 임계값은 `config.toml`의 `[badges]`다 ([03 §9.5](03-metrics-spec.md#95-판정-가이드-ui-배지용)).
+- `period_id`를 생략하면 가장 최근 계산 기간이다.
 - `UNMAPPED` 그룹이 존재하면 목록 마지막에 포함된다(`group_code = "UNMAPPED"`).
 
 ## 4. 시장 요약 API
@@ -283,6 +285,7 @@ Base URL: `/api/v1`
 **규약**
 
 - `members`는 `contribution_in_group` 내림차순이다. `side=both`이면 상위 `limit`개와 하위 `limit`개를 모두 담고, 중복은 제거한다.
+- `limit`은 한쪽 방향의 개수다. `side = both`이면 상위 `limit`개와 하위 `limit`개를 담고 겹치면 한 번만 넣는다.
 - `others`는 반환되지 않은 나머지 종목의 합산이다. DB에는 포함 종목 전체의 기여도가 저장되어 있으므로([02 §5.5](02-domain-and-data-model.md#55-group_member_contribution)) 조회 시 더해 만든다. `sum(members.contribution_in_group) + others.contribution_in_group = summary.return` (오차 1e-9).
 - `contribution_in_universe = base_weight × contribution_in_group`.
 
@@ -324,7 +327,35 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 2026-W36,2026-09-04,WI620,반도체,0.0615,1,0.2748,0.0169,118
 ```
 
-`Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment`.
+`Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment`. 파일명은 `sectors_{universe}_{scheme}_{from}_{to}.csv`다.
+
+### 6.3 `GET /events`
+
+수집 단계에서 기록한 특이사항 조회 ([07 §11.2](07-price-ingestion.md#112-특이사항)). 수익률이 가격 외 이유로 흔들린 구간을 확인하는 데 쓴다.
+
+| 파라미터 | 기본값 | 설명 |
+| --- | --- | --- |
+| `universe` | 필수 | 시장을 정한다 |
+| `type` | 전체 | `LISTING`, `DELISTING`, `RECLASS`, `SHARE_CHANGE`, `CORP_ACTION`, `DATA_GAP` |
+| `from` / `to` | 전체 | 사건 날짜 구간 (구간 사건은 종료일로 비교) |
+| `min_sector_share` | 0 | 섹터 시총 대비 비중 하한 |
+| `sort` | `sector_share` | `sector_share`(영향이 큰 순) 또는 `date` |
+| `limit` | 50 | 최대 500 |
+
+```json
+{
+  "meta": { "universe": "KR_COMMON", "market": "KR", "count": 50,
+            "by_type": { "CORP_ACTION": 292, "SHARE_CHANGE": 346, "LISTING": 125, "DELISTING": 72, "DATA_GAP": 1 } },
+  "data": [
+    { "event_id": 412, "market": "KR", "event_date": "2025-11-24", "end_date": null, "event_type": "CORP_ACTION",
+      "ticker": "207940", "name": "삼성바이오로직스", "group_code": "WI410", "group_name": "건강관리",
+      "market_cap": 8.23e13, "sector_share": 0.243, "detail": "207940 가격계수 1.471744, 주식수 미반영" }
+  ]
+}
+```
+
+- `sector_share`는 사건 시점 섹터 시총 대비 사건 규모다. 이 값으로 정렬하면 섹터 흐름에 영향이 큰 사건부터 나온다.
+- 시장 단위 사건(데이터 공백 등)은 `ticker`와 `group_code`가 `null`이다.
 
 ## 7. 캐싱
 

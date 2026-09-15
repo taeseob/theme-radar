@@ -56,6 +56,12 @@ python -m venv .venv
 .venv\Scripts\python -m theme_radar aggregate --market US --full
 ```
 
+조회는 API 서버를 띄운다. http://127.0.0.1:8000 에서 화면을, `/docs`에서 API 문서를 본다.
+
+```bash
+.venv\Scripts\python -m theme_radar serve
+```
+
 이후 운영은 시장마다 하루 한 번 `daily`를 실행한다. 수집부터 집계까지 이어서 돈다.
 
 ```bash

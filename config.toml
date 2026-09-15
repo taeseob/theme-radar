@@ -29,3 +29,15 @@ shares_history_from = "2026-03-09"                # FDR KRX 스냅샷으로 상�
 
 [checks]
 share_change_threshold = 0.05      # SHARE_CHANGE 특이사항 임계값 (docs/07 §11.2)
+
+[api]
+host = "127.0.0.1"                 # 내부 분석용이므로 외부 인터페이스에 열지 않는다 (docs/09 §4.3)
+port = 8000
+
+[badges]
+# 집중도 배지 판정 (docs/03 §9.5)
+top1_leader = 0.50                 # 상위 1종목 기여 비중 ≥ → "1종목 주도"
+top3_concentrated = 0.70           # 상위 3종목 기여 비중 ≥ (구성종목 10개 이상) → "소수 종목 집중"
+concentrated_min_members = 10
+broad_up_ratio = 0.70              # 상승 종목 비율 ≥ 이고 상위 3종목 기여 < 0.50 → "전반적 강세"
+broad_top3_max = 0.50

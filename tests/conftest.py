@@ -1,5 +1,6 @@
 import pytest
 
+from tests import factories
 from theme_radar.db import connect, migrate
 
 
@@ -14,3 +15,8 @@ def con(db_path):
     migrate(con)
     yield con
     con.close()
+
+
+@pytest.fixture
+def market(con):
+    return factories.build_market(con)
