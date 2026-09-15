@@ -161,11 +161,13 @@ WI26 구성종목 2,373개의 2025-01-02 ~ 2026-09-14 일봉을 두 출처에서
 
 ### 5.1 파일 구성
 
+이 모듈은 애플리케이션 패키지 `theme_radar/` 아래에 둔다. DB 스키마(마이그레이션)·연결 설정·설정 파일·CLI 진입점은 패키지 공통 모듈을 쓴다 ([09 §6](09-tech-stack.md#6-저장소-구조)).
+
 ```
-scripts/prices/
-├── __main__.py          # CLI 진입점
+theme_radar/prices/
+├── cli.py               # prices 하위 명령 (python -m theme_radar prices ...)
 ├── net.py               # 직접 호출용 GET/POST, 재시도, 속도 제한, 원문 저장
-├── store.py             # SQLite 스키마, upsert, 트랜잭션
+├── store.py             # upsert, 트랜잭션 (스키마 생성은 theme_radar/db/)
 ├── trading_calendar.py  # 지수 시계열로 거래일 캘린더 생성
 ├── sources/
 │   ├── kind.py          # KR 종목 목록 (직접 호출)
@@ -188,21 +190,23 @@ scripts/prices/
 ### 5.2 명령
 
 ```bash
-.venv\Scripts\python -m scripts.prices init-db
-.venv\Scripts\python -m scripts.prices universe  --market KR                  # KIND 목록 + FDR 소속부·폐지 목록
-.venv\Scripts\python -m scripts.prices universe  --market US                  # 현재 구성 + 변경표로 편입 이력 생성
-.venv\Scripts\python -m scripts.prices backfill  --market KR --from 2025-01-01
-.venv\Scripts\python -m scripts.prices backfill  --market US --from 2025-01-01
-.venv\Scripts\python -m scripts.prices daily     --market KR                  # 증분 + 기업행위 감지 + 검증
-.venv\Scripts\python -m scripts.prices daily     --market US
-.venv\Scripts\python -m scripts.prices restate   --market KR --ticker 001080  # 한 종목 강제 재수정
-.venv\Scripts\python -m scripts.prices reconcile --market KR                  # 주간 전 구간 대사 (§9.4)
+.venv\Scripts\python -m theme_radar init-db                                          # DB 마이그레이션 적용 (패키지 공통 명령)
+.venv\Scripts\python -m theme_radar prices universe  --market KR                  # KIND 목록 + FDR 소속부·폐지 목록
+.venv\Scripts\python -m theme_radar prices universe  --market US                  # 현재 구성 + 변경표로 편입 이력 생성
+.venv\Scripts\python -m theme_radar prices backfill  --market KR --from 2025-01-01
+.venv\Scripts\python -m theme_radar prices backfill  --market US --from 2025-01-01
+.venv\Scripts\python -m theme_radar prices daily     --market KR                  # 증분 + 기업행위 감지 + 검증
+.venv\Scripts\python -m theme_radar prices daily     --market US
+.venv\Scripts\python -m theme_radar prices restate   --market KR --ticker 001080  # 한 종목 강제 재수정
+.venv\Scripts\python -m theme_radar prices reconcile --market KR                  # 주간 전 구간 대사 (§9.4)
 ```
+
+수집 뒤 집계까지 이어서 실행하는 `daily --market KR|US`는 [09 §4.6](09-tech-stack.md#46-배치-실행과-운영)에 정의한다.
 
 ### 5.3 실행 환경
 
-- 프로젝트 루트에 가상환경 `.venv`를 만들고 이 모듈은 그 안에서만 실행한다. pyenv 전역 Python에는 패키지를 설치하지 않는다.
-- 직접 의존성은 두 개이고 버전을 고정한다. 설치 후 `pip freeze` 결과를 잠금 파일로 저장한다. 2026-09-15 설치 시 함께 설치된 패키지는 32개였다 ([08 §5](08-library-review.md#5-공통-영향)).
+- 프로젝트 루트에 가상환경 `.venv`를 만들고 이 모듈은 그 안에서만 실행한다. pyenv 전역 Python에는 패키지를 설치하지 않는다. 가상환경은 애플리케이션 전체(API 서버, 테스트 포함)가 함께 쓴다 ([09 §5](09-tech-stack.md#5-의존성)).
+- 이 모듈의 직접 의존성은 두 개이고 버전을 고정한다. 설치 후 `pip freeze` 결과를 잠금 파일로 저장한다. 2026-09-15 설치 시 함께 설치된 패키지는 32개였다 ([08 §5](08-library-review.md#5-공통-영향)).
 
 ```
 yfinance==1.7.0
@@ -214,7 +218,7 @@ finance-datareader==0.9.202
 
 ## 6. 저장소 스키마
 
-수집 결과는 SQLite 파일 하나(`data/prices.sqlite3`)에 적재한다. `security`, `universe_membership`, `trading_calendar`는 [02](02-domain-and-data-model.md)의 정의를 그대로 따른다. 아래 `price_daily`는 02 §4.2에 **출처 추적 컬럼을 더한 것**이고, 나머지 네 테이블은 이 모듈을 위해 **새로 추가**한다. 확정되면 02 문서에 반영한다.
+수집 결과는 애플리케이션 DB인 SQLite 파일 하나(`data/theme_radar.sqlite3`)에 적재한다. 원천·마스터·파생 테이블을 같은 파일에 둔다 ([09 §4.1](09-tech-stack.md#41-db-sqlite)). `security`, `universe_membership`, `trading_calendar`는 [02](02-domain-and-data-model.md)의 정의를 그대로 따른다. 아래 `price_daily`는 02 §4.2에 **출처 추적 컬럼을 더한 것**이고, 나머지 네 테이블은 이 모듈을 위해 **새로 추가**한다. 확정되면 02 문서에 반영한다.
 
 ```sql
 CREATE TABLE price_daily (
@@ -751,11 +755,12 @@ def restate(conn, sec, source, run_id, now):
 
 | 작업 | 시각 (KST) | 근거 |
 | --- | --- | --- |
-| `daily --market KR` | 거래일 18:00 | 네이버 시총 목록 API의 `closePriceSendTime` 값 16:30 이후 |
-| `daily --market US` | 다음 날 08:00 | 미국 정규장 마감 후 |
-| `reconcile` | 토요일 | 전 구간 대사 |
+| `prices daily --market KR` | 거래일 18:00 | 네이버 시총 목록 API의 `closePriceSendTime` 값 16:30 이후 |
+| `prices daily --market US` | 다음 날 08:00 | 미국 정규장 마감 후 |
+| `prices reconcile` | 토요일 | 전 구간 대사 |
 
-- 이 PC는 Windows이므로 작업 스케줄러(`schtasks`)로 등록한다. 작업 스케줄러는 작업 디렉터리를 지정하지 않으므로 `cd /d C:\WORK\PROJECT\theme-radar` 후 `.venv\Scripts\python -m scripts.prices ...`를 실행하는 `.cmd` 파일을 만들어 등록한다.
+- 이 PC는 Windows이므로 작업 스케줄러(`schtasks`)로 등록한다. 작업 스케줄러는 작업 디렉터리를 지정하지 않으므로 `cd /d C:\WORK\PROJECT\theme-radar` 후 `.venv\Scripts\python -m theme_radar ...`를 실행하는 `.cmd` 파일을 만들어 등록한다.
+- 거래일 작업으로는 `prices daily` 대신 수집 뒤 집계까지 이어서 실행하는 `daily --market KR|US`를 등록한다. 토요일 작업은 `prices reconcile` → `recalc` → `backup` 순서다 ([09 §4.6](09-tech-stack.md#46-배치-실행과-운영)).
 - PC가 꺼져 실행을 건너뛰어도 [§4](#4-설계-원칙)의 증분 규칙이 다음 실행에서 메운다.
 - 장 마감 전에 실행되면 당일 행을 저장하지 않는다. KR은 16:30 KST, US는 뉴욕 시각 16:30이 기준이다.
 

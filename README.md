@@ -30,6 +30,7 @@
 | [06-ui-spec.md](docs/06-ui-spec.md) | 화면 구성, 범프 차트 및 드릴다운 명세 |
 | [07-price-ingestion.md](docs/07-price-ingestion.md) | 주가·상장주식수 수집 모듈: 출처 검증, yfinance·FinanceDataReader 사용 범위, 분할·병합 소급 갱신, 수집 단계 검증 |
 | [08-library-review.md](docs/08-library-review.md) | FinanceDataReader·yfinance 검토 기록과 채택 결정, Yahoo 분할 이벤트의 분사 혼입 |
+| [09-tech-stack.md](docs/09-tech-stack.md) | 기술 스택(Python·SQLite·FastAPI·ECharts)과 선택 이유, 저장소 구조, 배치 실행, 구현 순서 |
 
 ## 표기 규약
 
