@@ -1,26 +1,49 @@
 # 02. 도메인 모델 및 데이터 모델
 
+> **테이블 정의(DDL)의 단일 출처는 [`theme_radar/db/migrations/`](../theme_radar/db/migrations/)의 SQL 파일이다.** 컬럼 타입, 제약, 코드값, 컬럼별 설명은 SQL 파일과 그 주석을 본다. 이 문서는 테이블의 목적, 키, 조회·적재 규약을 설명한다. 스키마를 바꿀 때는 새 마이그레이션 파일을 추가하고 이 문서의 규약을 함께 고친다.
+
 ## 1. 레이어 구분
 
 | 레이어 | 성격 | 테이블 |
 | --- | --- | --- |
-| **마스터** | 외부/자체 공급, 저빈도 변경, 이력 관리 | `market`, `security`, `universe_membership`, `classification_scheme`, `classification_group`, `security_group_map` |
-| **원천 시계열** | 일 단위 적재 | `price_daily`, `trading_calendar` |
-| **파생(집계)** | 배치로 산출, 재계산 가능 | `period_calendar`, `security_period_return`, `group_period_stat`, `universe_period_stat`, `group_member_contribution` |
+| **마스터** | 외부/자체 공급, 저빈도 변경, 이력 관리 | `market`, `universe`, `security`, `universe_membership`, `classification_scheme`, `classification_group`, `security_group_map` |
+| **원천 시계열** | 일 단위 적재 | `trading_calendar`, `price_daily`, `shares_observation`, `corporate_action`, `special_event` |
+| **파생(집계)** | 배치로 산출, 재계산 가능 | `period_calendar`, `security_period_return`, `universe_period_stat`, `group_period_stat`, `group_member_contribution` |
+| **운영** | 실행 기록, 검증 결과, 재계산 요청 | `batch_run`, `validation_result`, `restatement_log`, `recalc_request` |
 
 파생 레이어는 **언제든 원천으로부터 전량 재생성 가능**해야 한다. 파생 테이블에 수기 보정값을 넣지 않는다.
+
+### 1.1 저장 규약
+
+| 항목 | 규약 |
+| --- | --- |
+| DB | SQLite 파일 하나 `data/theme_radar.sqlite3` ([09 §4.1](09-tech-stack.md#41-db-sqlite)). 모든 테이블은 `STRICT`다 |
+| 날짜 | `TEXT` `YYYY-MM-DD`, 거래소 현지 날짜. as-of 조회를 문자열 비교로 하므로 형식을 `CHECK`로 강제한다 |
+| 시각 | `TEXT` ISO-8601 UTC (`2026-09-15T09:31:22Z`) |
+| 수치 | 수익률·비중·가격·시총은 `REAL`(배정밀도). [03 §11](03-metrics-spec.md#11-정밀도-및-반올림)이 허용하는 방식이다 |
+| 참거짓 | `INTEGER` 0/1 |
+| 코드값 | `TEXT` + `CHECK (... IN (...))`. 코드값을 추가하려면 마이그레이션이 필요하다. 출처 코드(`price_source` 등)는 어댑터 교체로 늘어나므로 `CHECK`를 두지 않는다 |
+| 외래키 | 마스터·원천·운영 테이블에 건다. 파생 테이블은 전량 재생성하므로 걸지 않는다 |
+| 트랜잭션 | 연결은 자동 커밋 모드로 열고, 여러 문장을 쓰는 작업은 `BEGIN IMMEDIATE` 트랜잭션으로 묶는다 (`theme_radar/db/connection.py`) |
+
+**유효기간과 as-of 조회.** 이력 테이블은 `valid_from`, `valid_to`를 가지며 구간은 양끝 포함(closed interval)이다. 종료가 없으면 `valid_to = '9999-12-31'`이다. 시점 `:as_of`의 행은 `valid_from <= :as_of AND :as_of <= valid_to`로 찾는다. 전 테이블에서 이 규약을 통일한다.
 
 ## 2. ERD
 
 ```mermaid
 erDiagram
+    market ||--o{ universe : has
     market ||--o{ security : lists
     market ||--o{ trading_calendar : has
     market ||--o{ period_calendar : has
     market ||--o{ classification_scheme : scopes
+    market ||--o{ special_event : records
 
-    security ||--o{ price_daily : has
+    universe ||--o{ universe_membership : includes
     security ||--o{ universe_membership : belongs_to
+    security ||--o{ price_daily : has
+    security ||--o{ shares_observation : has
+    security ||--o{ corporate_action : has
     security ||--o{ security_group_map : mapped_to
     security ||--o{ security_period_return : produces
 
@@ -29,64 +52,39 @@ erDiagram
     classification_group ||--o{ group_period_stat : aggregates
 
     period_calendar ||--o{ security_period_return : scopes
-    period_calendar ||--o{ group_period_stat : scopes
     period_calendar ||--o{ universe_period_stat : scopes
-
+    period_calendar ||--o{ group_period_stat : scopes
     group_period_stat ||--o{ group_member_contribution : decomposes
+
+    batch_run ||--o{ validation_result : checks
+    batch_run ||--o{ restatement_log : logs
+    batch_run ||--o{ recalc_request : processes
 ```
 
 ## 3. 마스터 테이블
 
-### 3.1 market
+### 3.1 market · universe
 
-```sql
-CREATE TABLE market (
-    market_code   VARCHAR(8)   PRIMARY KEY,   -- KR, US
-    market_name   VARCHAR(64)  NOT NULL,
-    currency      CHAR(3)      NOT NULL,      -- KRW, USD
-    timezone      VARCHAR(32)  NOT NULL       -- Asia/Seoul, America/New_York
-);
-```
+- `market`은 시장(KR, US)의 통화와 시간대, `universe`는 유니버스(`KR_COMMON`, `US_SP500`)의 이름과 시장이다.
+- 두 테이블과 `classification_scheme`의 기준 코드는 마이그레이션이 넣는다. 코드 값의 단일 출처는 DB이며 애플리케이션 코드에 하드코딩하지 않는다([§7](#7-코드-체계-참고)).
 
 ### 3.2 security
 
-```sql
-CREATE TABLE security (
-    security_id     BIGINT       PRIMARY KEY,      -- 내부 불변 식별자
-    market_code     VARCHAR(8)   NOT NULL REFERENCES market(market_code),
-    board           VARCHAR(16)  NOT NULL,         -- KOSPI, KOSDAQ, NYSE, NASDAQ
-    ticker          VARCHAR(16)  NOT NULL,         -- KR: 6자리 단축코드 / US: 심볼
-    isin            VARCHAR(12),
-    name_local      VARCHAR(128) NOT NULL,
-    name_en         VARCHAR(128),
-    security_type   VARCHAR(16)  NOT NULL,         -- COMMON, PREFERRED, ETF, REIT, SPAC, DR, OTHER
-    listing_date    DATE,
-    delisting_date  DATE,                          -- NULL이면 상장 유지
-    currency        CHAR(3)      NOT NULL,
-    UNIQUE (market_code, ticker, listing_date)
-);
-CREATE INDEX ix_security_type ON security(market_code, security_type);
-```
+키: `security_id` (내부 불변 정수)
 
-- `security_id`는 티커 변경·사명 변경과 무관하게 유지한다. 티커 재사용(다른 기업이 동일 코드를 부여받는 경우)을 구분해야 하므로 티커 단독으로 유일키를 두지 않는다.
-- 티커/사명 변경 이력이 필요하면 `security_alias(security_id, ticker, name, valid_from, valid_to)`를 별도 운영한다.
+- `security_id`는 티커 변경·사명 변경과 무관하게 유지한다.
+- **상장 중인 종목끼리는 `(market_code, ticker)`가 유일하다** (부분 유니크 인덱스). 폐지된 종목의 티커는 다른 종목이 다시 쓸 수 있으므로 티커 단독 유일키를 두지 않는다.
+- 종목코드는 항상 문자열이다. KR은 선행 0과 영문자(`0197V0`)가 있고, US는 점 표기(`BRK.B`)로 저장한다. 출처별 표기(Yahoo `BRK-B`)는 어댑터에서 바꾼다.
+- `cik`는 US 종목의 SEC CIK 10자리다. SEC 주식수 조회와 복수 클래스 묶음에 쓴다([07 §8.3](07-price-ingestion.md#83-주식수)).
+- 티커 변경 이력 테이블(`security_alias`)은 아직 두지 않는다. 수집 단계에서 실제 변경 건수를 보고 정한다([§9](#9-결정-기록) S-12).
 
 ### 3.3 universe_membership
 
-유니버스 편입 이력. KR은 마스터 조건에서 일 단위로 생성하고, US는 지수 구성종목 공급 데이터로 적재한다.
+키: `(universe_code, security_id, valid_from)`
 
-```sql
-CREATE TABLE universe_membership (
-    universe_code VARCHAR(16) NOT NULL,   -- KR_COMMON, US_SP500
-    security_id   BIGINT      NOT NULL REFERENCES security(security_id),
-    valid_from    DATE        NOT NULL,
-    valid_to      DATE        NOT NULL DEFAULT DATE '9999-12-31',  -- 종료일 포함
-    PRIMARY KEY (universe_code, security_id, valid_from)
-);
-CREATE INDEX ix_um_asof ON universe_membership(universe_code, valid_from, valid_to);
-```
+유니버스 편입 이력. KR은 마스터 조건에서 생성하고, US는 지수 구성종목 변경 이력으로 적재한다.
 
-**as-of 조회 규약**: `valid_from <= :as_of AND :as_of <= valid_to`. 구간은 양끝 포함(closed interval)으로 전 테이블에서 통일한다.
+- 같은 유니버스에서 한 종목의 편입 기간은 겹치지 않는다. 겹치는 행은 트리거가 거부한다.
 
 `KR_COMMON` 생성 조건 (기준일 as-of):
 
@@ -98,221 +96,105 @@ AND security.listing_date <= :as_of
 AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 ```
 
+제외 대상의 구체적인 판정 순서는 [07 §7.1](07-price-ingestion.md#71-종목-마스터와-유니버스)을 따른다.
+
 ### 3.4 classification_scheme / classification_group
 
-```sql
-CREATE TABLE classification_scheme (
-    scheme_code   VARCHAR(24) PRIMARY KEY,   -- WI26, GICS, THEME_AI
-    scheme_name   VARCHAR(64) NOT NULL,
-    market_code   VARCHAR(8)  NOT NULL REFERENCES market(market_code),
-    scheme_type   VARCHAR(8)  NOT NULL,      -- SECTOR, THEME
-    is_exclusive  BOOLEAN     NOT NULL,      -- SECTOR=true, THEME=false
-    source_note   VARCHAR(256)               -- 예: WI26 준거, 사내 매핑
-);
+`classification_scheme` 키: `scheme_code` · `classification_group` 키: `(scheme_code, group_code)`
 
-CREATE TABLE classification_group (
-    scheme_code   VARCHAR(24) NOT NULL REFERENCES classification_scheme(scheme_code),
-    group_code    VARCHAR(24) NOT NULL,
-    group_name    VARCHAR(64) NOT NULL,
-    group_name_en VARCHAR(64),
-    sort_order    INT         NOT NULL DEFAULT 0,
-    color_hex     CHAR(7),                   -- 차트 고정 색상
-    valid_from    DATE        NOT NULL,
-    valid_to      DATE        NOT NULL DEFAULT DATE '9999-12-31',
-    PRIMARY KEY (scheme_code, group_code, valid_from)
-);
-```
-
+- 섹터 스킴(`scheme_type = 'SECTOR'`)은 배타적(`is_exclusive = 1`), 테마 스킴은 비배타적이다. `CHECK`로 강제한다.
+- **집계 단위인 섹터만 등록한다.** WI26 대분류 26개, GICS 섹터 11개다. 하위 산업 단계는 등록하지 않는다([§9](#9-결정-기록) S-2).
+- `group_code`는 분류 체계의 공식 코드를 쓰며 다른 뜻으로 재사용하지 않는다. 그룹의 신설·폐지는 `valid_from`, `valid_to`로 표시하고, 명칭 변경은 행을 갱신한다.
 - `color_hex`는 **섹터별 고정 색상**을 보장하기 위한 값이다. 조회 조건이나 순위가 바뀌어도 같은 섹터는 항상 같은 색으로 그린다.
+- `UNMAPPED`는 등록하지 않는다. 미매핑 종목을 집계하는 의사 그룹이며 파생 테이블에만 나타난다.
 
 ### 3.5 security_group_map
 
+키: `(scheme_code, security_id, group_code, valid_from)`
+
 자체 제공 분류 매핑의 실체. 시스템의 핵심 입력이다.
 
-```sql
-CREATE TABLE security_group_map (
-    scheme_code  VARCHAR(24) NOT NULL,
-    security_id  BIGINT      NOT NULL REFERENCES security(security_id),
-    group_code   VARCHAR(24) NOT NULL,
-    valid_from   DATE        NOT NULL,
-    valid_to     DATE        NOT NULL DEFAULT DATE '9999-12-31',
-    source_batch VARCHAR(64),               -- 적재 배치/파일 식별자
-    PRIMARY KEY (scheme_code, security_id, valid_from)
-);
-CREATE INDEX ix_sgm_asof ON security_group_map(scheme_code, valid_from, valid_to);
-```
+**무결성 제약** (트리거가 INSERT·UPDATE를 거부한다)
 
-**무결성 제약**
-
-- `is_exclusive = true` 스킴: 동일 `(scheme_code, security_id)`에 대해 유효기간이 겹치는 행이 2건 이상 존재할 수 없다. 적재 시 검증한다.
-- `is_exclusive = false` 스킴(테마): 중복 허용.
-- 매핑이 없는 종목은 계산에서 `UNMAPPED` 그룹으로 분리 집계하고, 커버리지 경보 대상으로 삼는다 ([04](04-pipeline.md#5-데이터-품질-검증)).
+- 배타 스킴: 한 종목의 매핑은 그룹과 무관하게 유효기간이 겹칠 수 없다. 동시에 두 섹터에 속할 수 없다.
+- 비배타 스킴(테마): 한 종목이 여러 그룹에 동시에 속할 수 있다. 같은 그룹 매핑끼리는 기간이 겹칠 수 없다.
+- 키가 같은 행의 UPSERT(`ON CONFLICT DO UPDATE`)는 허용한다. 같은 파일을 다시 적재해도 실패하지 않는다.
+- 매핑이 없는 종목은 계산에서 `UNMAPPED` 그룹으로 분리 집계하고, 커버리지 경보 대상으로 삼는다 ([04 §5](04-pipeline.md#5-데이터-품질-검증)).
 
 ## 4. 원천 시계열 테이블
 
 ### 4.1 trading_calendar
 
-```sql
-CREATE TABLE trading_calendar (
-    market_code VARCHAR(8) NOT NULL REFERENCES market(market_code),
-    trade_date  DATE       NOT NULL,
-    is_open     BOOLEAN    NOT NULL,
-    PRIMARY KEY (market_code, trade_date)
-);
-```
+키: `(market_code, trade_date)`
+
+- **거래일만 저장한다.** 시장 지수 시계열에서 만든다(KR `KOSPI`, US `^GSPC`). 휴장일 행은 없다.
+- 미래 거래일은 알 수 없으므로 진행 중 기간은 최신 거래일 기준으로 계산한다([01 §5](01-requirements.md#5-기간-체계-period)).
 
 ### 4.2 price_daily
 
-```sql
-CREATE TABLE price_daily (
-    security_id    BIGINT        NOT NULL REFERENCES security(security_id),
-    trade_date     DATE          NOT NULL,
-    close_raw      NUMERIC(20,6) NOT NULL,   -- 무수정 종가
-    adj_factor     NUMERIC(20,10) NOT NULL DEFAULT 1.0,  -- 누적 수정계수
-    close_adj      NUMERIC(20,6) NOT NULL,   -- close_raw * adj_factor
-    shares_listed  BIGINT,                   -- 상장주식수(보통주)
-    market_cap     NUMERIC(24,2),            -- close_raw * shares_listed
-    volume         BIGINT,
-    trade_status   VARCHAR(16)   NOT NULL,   -- NORMAL, SUSPENDED, HALTED, NO_TRADE
-    PRIMARY KEY (security_id, trade_date)
-);
-CREATE INDEX ix_pd_date ON price_daily(trade_date);
-```
+키: `(security_id, trade_date)`
 
 - `market_cap`은 **무수정 종가 × 상장주식수**로 산출한다. 수정주가로 계산하면 시가총액이 왜곡된다.
-- `close_adj`는 수익률 계산 전용이다. 수정계수는 소급 변경될 수 있으므로 변경 감지 시 재계산 트리거를 건다.
+- `close_adj`는 수익률 계산 전용이다. 수정계수는 소급 변경될 수 있으므로 변경 감지 시 재계산을 요청한다(`recalc_request`).
+- `close_raw`, `shares_listed`는 적재 후 바꾸지 않는다. 기업행위는 `adj_factor`, `close_adj`의 소급 갱신으로만 반영한다([07 §9](07-price-ingestion.md#9-액면분할병합-소급-갱신)).
+- `close_raw`는 원칙적으로 값이 있다. 이미 폐지된 종목에서 원종가를 확정할 수 없는 날만 `NULL`이며, 이때 `adj_factor`와 `market_cap`도 `NULL`이다([07 §7.2](07-price-ingestion.md#72-무수정-종가)).
 - `trade_status = 'SUSPENDED'` 구간은 직전 정상 종가를 캐리포워드하되 상태 값은 유지한다.
+- `price_source`, `adj_source`, `fetched_at`, `adj_updated_at`은 출처 추적 컬럼이다.
+
+### 4.3 수집 보조 테이블
+
+| 테이블 | 키 | 용도 |
+| --- | --- | --- |
+| `shares_observation` | `(security_id, as_of_date, source)` | 출처별 상장주식수 관측치. `price_daily.shares_listed`는 여기서 as-of 규칙과 출처 우선순위로 채운다 ([07 §6](07-price-ingestion.md#6-저장소-스키마)) |
+| `corporate_action` | `(security_id, ex_date, source)` | 분할·병합 등 기업행위 기록. 가격 계수와 주식수 비율을 따로 둔다 ([07 §9](07-price-ingestion.md#9-액면분할병합-소급-갱신)) |
+| `special_event` | `event_id` | 특이사항. 가격이 아닌 이유로 섹터 시총을 바꾸거나 계산에 오차를 남기는 사건 ([07 §11.2](07-price-ingestion.md#112-특이사항)) |
+
+- `special_event`는 `(market_code, event_type, security_id, event_date)`로 한 번만 기록한다. 시장 단위 사건은 `security_id`가 `NULL`이므로, 유니크 인덱스에서 `IFNULL(security_id, 0)`을 쓴다.
 
 ## 5. 파생(집계) 테이블
 
+계산 정의는 [03](03-metrics-spec.md), 계산 순서와 재계산 정책은 [04](04-pipeline.md)를 따른다. `calc_version`, `calculated_at`은 어떤 로직으로 언제 산출한 값인지 추적한다.
+
 ### 5.1 period_calendar
 
-```sql
-CREATE TABLE period_calendar (
-    market_code  VARCHAR(8)  NOT NULL REFERENCES market(market_code),
-    period_type  CHAR(1)     NOT NULL,        -- W, M
-    period_id    VARCHAR(10) NOT NULL,        -- 2026-W03 | 2026-01
-    period_seq   INT         NOT NULL,        -- 시장/단위별 단조 증가 정렬키
-    cal_start    DATE        NOT NULL,        -- 캘린더 시작일
-    cal_end      DATE        NOT NULL,        -- 캘린더 종료일
-    base_date    DATE,                        -- 직전 기간의 마지막 거래일(가중치 기준일)
-    end_date     DATE        NOT NULL,        -- 해당 기간의 마지막 거래일
-    trading_days INT         NOT NULL,
-    is_closed    BOOLEAN     NOT NULL,        -- 기간 종료 및 확정 여부
-    PRIMARY KEY (market_code, period_type, period_id)
-);
-```
+키: `(market_code, period_type, period_id)` · 유일: `(market_code, period_type, period_seq)`
 
-- `period_seq`는 ISO week-year의 연도 경계 문제를 피하기 위한 정렬 전용 정수 키다. 문자열 `period_id` 정렬에 의존하지 않는다.
+- `period_id` 형식은 주 `YYYY-Www`, 월 `YYYY-MM`이며 `period_type`에 맞는지 `CHECK`로 강제한다.
+- `period_seq`는 ISO week-year의 연도 경계 문제를 피하기 위한 정렬 전용 정수 키다. 시장·단위별로 **존재하는 기간마다 1씩 증가**하므로 `period_seq - 1`이 직전 기간이다. 문자열 `period_id` 정렬에 의존하지 않는다.
+- ISO 주차는 Python `date.isocalendar()`로 계산한다. 내장 SQLite(3.45.3)에는 ISO 주차 형식 문자가 없다.
 - 시장별 거래일 캘린더가 다르므로 동일 `period_id`라도 `end_date`는 시장마다 다르다.
 - 거래일이 0일인 기간은 행을 생성하지 않는다.
 
 ### 5.2 security_period_return
 
-```sql
-CREATE TABLE security_period_return (
-    universe_code   VARCHAR(16) NOT NULL,
-    period_type     CHAR(1)     NOT NULL,
-    period_id       VARCHAR(10) NOT NULL,
-    security_id     BIGINT      NOT NULL,
-    base_close_adj  NUMERIC(20,6),
-    end_close_adj   NUMERIC(20,6),
-    ret             NUMERIC(18,10),           -- 기간 수익률
-    base_market_cap NUMERIC(24,2),            -- 기준일 시가총액(가중치 분자)
-    weight_universe NUMERIC(18,12),           -- 유니버스 내 비중
-    incl_status     VARCHAR(16) NOT NULL,     -- INCLUDED, NEW_LISTING, DELISTED, NO_BASE_PRICE, SUSPENDED, NO_MCAP
-    PRIMARY KEY (universe_code, period_type, period_id, security_id)
-);
-```
+키: `(universe_code, period_type, period_id, security_id)`
+
+기간별 종목 수익률, 기준일 시가총액, 유니버스 내 비중, 포함 판정(`incl_status`, [03 §10](03-metrics-spec.md#10-예외-처리)). 제외 종목도 사유와 함께 행을 남긴다.
 
 ### 5.3 universe_period_stat
 
-```sql
-CREATE TABLE universe_period_stat (
-    universe_code      VARCHAR(16) NOT NULL,
-    period_type        CHAR(1)     NOT NULL,
-    period_id          VARCHAR(10) NOT NULL,
-    ret                NUMERIC(18,10) NOT NULL,   -- 시가총액 가중 시장 수익률
-    ret_equal          NUMERIC(18,10),            -- 동일가중 수익률
-    ret_median         NUMERIC(18,10),
-    base_market_cap    NUMERIC(24,2)  NOT NULL,
-    member_cnt         INT NOT NULL,
-    up_cnt             INT NOT NULL,
-    unmapped_cap_ratio NUMERIC(9,6),              -- 분류 미매핑 시총 비중(품질 지표)
-    is_provisional     BOOLEAN NOT NULL DEFAULT FALSE,
-    calc_version       VARCHAR(16) NOT NULL,
-    calculated_at      TIMESTAMP NOT NULL,
-    PRIMARY KEY (universe_code, period_type, period_id)
-);
-```
+키: `(universe_code, period_type, period_id)` · 유일: `(universe_code, period_type, period_seq)`
+
+유니버스 수익률(시총가중·동일가중·중앙값), 구성 종목 수, 미매핑 시총 비중. `period_seq`로 구간을 조회한다.
 
 ### 5.4 group_period_stat
 
-범프 차트와 기여도 화면의 주 조회 대상. **단일 테이블 조회로 화면이 그려지도록** 비정규화한다.
+키: `(universe_code, scheme_code, period_type, period_id, group_code)`
 
-```sql
-CREATE TABLE group_period_stat (
-    universe_code      VARCHAR(16) NOT NULL,
-    scheme_code        VARCHAR(24) NOT NULL,
-    group_code         VARCHAR(24) NOT NULL,
-    period_type        CHAR(1)     NOT NULL,
-    period_id          VARCHAR(10) NOT NULL,
-    period_seq         INT         NOT NULL,
+범프 차트와 기여도 화면의 주 조회 대상. **단일 테이블 조회로 화면이 그려지도록** 수익률·비중·기여도·순위·집중도를 비정규화해 담는다.
 
-    -- 수익률
-    ret                NUMERIC(18,10) NOT NULL,   -- 시총가중 그룹 수익률
-    ret_equal          NUMERIC(18,10),            -- 동일가중
-    ret_median         NUMERIC(18,10),
-
-    -- 비중/기여도
-    base_weight        NUMERIC(18,12),            -- 기준일 유니버스 내 그룹 비중
-    contribution       NUMERIC(18,10),            -- base_weight * ret
-    contrib_share      NUMERIC(18,10),            -- contribution / universe_ret (가드 적용)
-
-    -- 순위
-    rank_ret           INT NOT NULL,              -- 수익률 내림차순 순위
-    rank_ret_prev      INT,
-    rank_delta         INT,                       -- rank_ret_prev - rank_ret (+면 순위 상승)
-    rank_contrib       INT,                       -- 기여도 절대값 기준 순위
-
-    -- 집중도
-    member_cnt         INT NOT NULL,
-    up_cnt             INT NOT NULL,
-    hhi                NUMERIC(12,10),            -- 그룹 내 비중 제곱합
-    effective_n        NUMERIC(12,4),             -- 1 / hhi
-    top1_contrib_share NUMERIC(12,8),
-    top3_contrib_share NUMERIC(12,8),
-    top5_contrib_share NUMERIC(12,8),
-    cap_weight_spread  NUMERIC(18,10),            -- ret - ret_equal
-
-    is_provisional     BOOLEAN NOT NULL DEFAULT FALSE,
-    calc_version       VARCHAR(16) NOT NULL,
-    calculated_at      TIMESTAMP NOT NULL,
-    PRIMARY KEY (universe_code, scheme_code, group_code, period_type, period_id)
-);
-CREATE INDEX ix_gps_series
-    ON group_period_stat(universe_code, scheme_code, period_type, period_seq);
-```
+- 인덱스: 구간 조회용 `(universe_code, scheme_code, period_type, period_seq)`, 섹터 시계열용 `(…, group_code, period_seq)`. 단일 기간 스냅샷은 키 선두로 찾는다.
+- 비배타 스킴에서는 `base_weight`, `contribution`, `contrib_share`가 `NULL`이다.
+- 하락 기여 기준 집중도(`top1/3/5_neg_contrib_share`)를 함께 저장한다([03 §9.1](03-metrics-spec.md#91-상위-기여-집중도)).
 
 ### 5.5 group_member_contribution
 
-드릴다운 전용. 전 종목 저장이 부담이면 **그룹·기간별 상위/하위 N건 + 잔여 합산 행**만 적재한다(기본 정책: 상위 20, 하위 20, 나머지는 `security_id = 0`인 `OTHERS` 합산 행).
+키: `(universe_code, scheme_code, period_type, period_id, group_code, security_id)`
 
-```sql
-CREATE TABLE group_member_contribution (
-    universe_code   VARCHAR(16) NOT NULL,
-    scheme_code     VARCHAR(24) NOT NULL,
-    group_code      VARCHAR(24) NOT NULL,
-    period_type     CHAR(1)     NOT NULL,
-    period_id       VARCHAR(10) NOT NULL,
-    security_id     BIGINT      NOT NULL,       -- 0 = OTHERS 합산 행
-    weight_in_group NUMERIC(18,12) NOT NULL,
-    ret             NUMERIC(18,10),
-    contribution    NUMERIC(18,10) NOT NULL,    -- weight_in_group * ret
-    contrib_rank    INT,
-    PRIMARY KEY (universe_code, scheme_code, group_code, period_type, period_id, security_id)
-);
-```
+드릴다운 전용. **포함된 전 종목**의 그룹 내 비중, 수익률, 기여도, 그룹 내 기여 순위를 저장한다([§9](#9-결정-기록) S-1).
+
+- 행 수는 배타 스킴 기준 `security_period_return`의 포함 종목 수와 같다(연 약 18.6만 행, [04 §6.1](04-pipeline.md#61-데이터-규모-추정)).
+- 드릴다운의 "기타 N종목" 합산은 API가 조회 시 반환하지 않은 종목을 더해 만든다([05 §5.1](05-api-spec.md#51-get-sectorsgroup_codebreakdown)).
 
 ## 6. 입력 데이터 규격
 
@@ -337,8 +219,8 @@ GICS,US,AAPL,45,2020-01-01,9999-12-31
 **적재 규칙**
 
 - 배치는 **원자적(all-or-nothing)** 이다. 검증 실패 행이 하나라도 있으면 커밋하지 않는다.
-- 배타 스킴에서 기존 유효 매핑과 기간이 겹치면, 신규 `valid_from`의 전일로 기존 행의 `valid_to`를 절단(close-out)한 뒤 신규 행을 삽입한다.
-- 소급 기간의 매핑이 변경되면 해당 시점 이후 전 기간의 파생 테이블 재계산을 예약한다 ([04](04-pipeline.md#4-재계산-정책)).
+- 배타 스킴에서 기존 유효 매핑과 기간이 겹치면, 신규 `valid_from`의 전일로 기존 행의 `valid_to`를 절단(close-out)한 뒤 신규 행을 삽입한다. 순서를 지키지 않으면 트리거가 거부한다.
+- 소급 기간의 매핑이 변경되면 해당 시점 이후 전 기간의 파생 테이블 재계산을 요청한다 ([04 §4](04-pipeline.md#4-재계산-정책)).
 
 ### 6.2 S&P 500 구성종목 파일 (universe_membership 적재)
 
@@ -359,7 +241,7 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
 
 ## 7. 코드 체계 참고
 
-- **WI26**: 대분류 26종 / 소분류 48종. 실제 코드·명칭은 수집 데이터 [`data/wi26_classification.csv`](../data/wi26_classification.csv)를 단일 출처로 하며, 이를 `classification_group`에 선등록한다.
+- **WI26**: 대분류 26종 / 소분류 48종. 실제 코드·명칭은 수집 데이터 [`data/wi26_classification.csv`](../data/wi26_classification.csv)를 단일 출처로 하며, **대분류 26종**을 `classification_group`에 선등록한다.
 
   | | | | | | |
   | --- | --- | --- | --- | --- | --- |
@@ -369,8 +251,8 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
   | WI520 보험 | WI600 소프트웨어 | WI610 IT하드웨어 | WI620 반도체 | WI630 IT가전 | WI640 디스플레이 |
   | WI700 통신서비스 | WI800 유틸리티 | | | | |
 
-  `group_code`는 `WI100` 형식의 원 코드를 그대로 쓴다. 섹터명에 쉼표가 포함되므로(`상사,자본재`) CSV 취급 시 따옴표 처리가 필요하다. 소분류(`WI10010` 등)는 `classification_group`에 하위 레벨로 등록하되, 이번 범위의 집계 단위는 **대분류**다.
-- **GICS**: 섹터 11종 / 산업그룹 25종 / 산업 74종 / 소분류 163종. 실제 코드·명칭은 [`data/gics_classification.csv`](../data/gics_classification.csv)(MSCI GICS Methodology 2024-08판에서 생성)를 단일 출처로 한다.
+  `group_code`는 `WI100` 형식의 원 코드를 그대로 쓴다. 섹터명에 쉼표가 포함되므로(`상사,자본재`) CSV 취급 시 따옴표 처리가 필요하다. 소분류(`WI10010` 등)는 등록하지 않는다. 종목별 소분류 데이터도 없다.
+- **GICS**: 섹터 11종 / 산업그룹 25종 / 산업 74종 / 소분류 163종. 실제 코드·명칭은 [`data/gics_classification.csv`](../data/gics_classification.csv)(MSCI GICS Methodology 2024-08판에서 생성)를 단일 출처로 하며, **섹터 11종**을 `classification_group`에 선등록한다.
 
   | | | | |
   | --- | --- | --- | --- |
@@ -378,5 +260,33 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
   | 30 Consumer Staples | 35 Health Care | 40 Financials | 45 Information Technology |
   | 50 Communication Services | 55 Utilities | 60 Real Estate | |
 
-  `group_code`는 GICS **공식 숫자 코드**를 그대로 쓴다(`45`, 하위 레벨은 `4530` / `453010` / `45301020`). `INFO_TECH` 같은 별칭 코드는 만들지 않는다. 상위 코드가 하위 코드의 접두어이므로 `VARCHAR`로 저장·비교하고 정수로 변환하지 않는다. 이번 범위의 집계 단위는 **섹터(2자리)** 다.
+  `group_code`는 GICS **공식 숫자 코드**를 그대로 쓴다(`45`). `INFO_TECH` 같은 별칭 코드는 만들지 않는다. 하위 코드(`4530` / `453010` / `45301020`)는 상위 코드를 접두어로 포함하므로, 하위 단계를 쓰게 되더라도 `TEXT`로 저장·비교하고 정수로 변환하지 않는다.
 - 두 체계 모두 **코드 값의 단일 출처는 DB 마스터**이며, 애플리케이션 코드에 하드코딩하지 않는다. 별칭 코드(`SEMICON`, `INFO_TECH` 등)는 두지 않고 공식 코드만 쓴다.
+
+## 8. 운영 테이블
+
+| 테이블 | 키 | 용도 |
+| --- | --- | --- |
+| `batch_run` | `run_id` | 작업 실행 기록. 상태(`RUNNING`, `SUCCEEDED`, `FAILED`, `BLOCKED`), 대상 범위, `calc_version` ([04 §7](04-pipeline.md#7-운영-메타데이터)) |
+| `validation_result` | `(run_id, rule_code, scope)` | 수집 검증(C-1 ~ C-13)과 계산 검증(V-1 ~ V-9) 결과. `severity`(`BLOCK`/`WARN`)로 차단과 경고를 구분한다. 통과하지 못한 경고 행이 점검 대상 목록을 겸한다 |
+| `restatement_log` | `(run_id, security_id)` | 수정계수 소급 갱신 기록 ([07 §9.3](07-price-ingestion.md#93-갱신-절차)) |
+| `recalc_request` | `request_id` | 소급 변경으로 생긴 재계산 요청. `processed_at`이 `NULL`이면 대기 중이며, 대기 중인 구간의 API 응답은 `stale = true`다 ([04 §4](04-pipeline.md#4-재계산-정책)) |
+
+## 9. 결정 기록
+
+2026-09-15 확정. 초안 DDL(PostgreSQL 형식)을 SQLite로 옮기면서 정한 사항이다.
+
+| # | 항목 | 결정 | 이유 |
+| --- | --- | --- | --- |
+| S-1 | 종목 기여도 저장 범위 | 포함된 전 종목을 저장한다. "기타" 합산 행은 저장하지 않고 API가 만든다 | 05의 조회 상한 100과 종목 검색 드릴다운을 지원한다. 연 18.6만 행으로, 상·하위 20 저장(연 10만 행)과 차이가 작다 |
+| S-2 | 분류 계층 | 섹터만 등록한다 | 집계 단위가 섹터다. WI26은 종목별 소분류가 없고, GICS 하위 단계는 위키백과 단일 출처다 |
+| S-3 | DDL 위치 | 마이그레이션 SQL이 단일 출처. 02는 목적·키·규약만 적는다 | 한 곳만 고친다 |
+| S-4 | `classification_group` 키 | `(scheme_code, group_code)`. 유효기간은 일반 컬럼 | 매핑 테이블에서 외래키를 걸 수 있다. 그룹 코드는 재사용하지 않는다 |
+| S-5 | `security_group_map` 키 | `group_code`를 키에 넣는다 | 초안 키로는 테마 스킴에서 한 종목을 같은 날 두 그룹에 넣을 수 없었다 |
+| S-6 | 유효기간 중첩 | 트리거로 DB가 거부한다 | 적재 코드의 검증과 별개로 DB 수준에서 보장한다 |
+| S-7 | 티커 유일성 | 상장 중인 종목끼리만 유일 (부분 인덱스) | US는 상장일을 모르는 종목이 있어 초안의 `(market, ticker, listing_date)` 유일키가 `NULL`로 무력해진다 |
+| S-8 | `universe` 테이블 | 신설하고 기준 코드를 마이그레이션이 넣는다 | 05 `/meta/universes`의 출처. 코드를 앱에 하드코딩하지 않는다 |
+| S-9 | `trading_calendar.is_open` | 없앤다. 거래일만 저장한다 | 지수 시계열로 만들어 휴장일 행이 생기지 않는다 |
+| S-10 | `price_daily.close_raw` | 원종가를 확정할 수 없는 폐지 종목의 날만 `NULL` 허용 | 07 §7.2 규칙. 수정 종가는 남겨 수익률 계산에 쓴다 |
+| S-11 | 추가 컬럼 | `security.cik`, `universe_period_stat.period_seq`, `group_period_stat.top1/3/5_neg_contrib_share`, `validation_result.severity` | SEC 조회(07 §8.3), 구간 조회, 03 §9.1 하락 기여 집중도, `status` 명령의 차단·경고 구분 |
+| S-12 | `security_alias` | 아직 두지 않는다 | 2단계 수집에서 티커 변경 실제 건수를 보고 정한다 |

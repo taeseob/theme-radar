@@ -62,7 +62,7 @@
 5. 분류 매핑 as-of `base_date` 조인 → 그룹 배정 (미매핑은 `UNMAPPED`)
 6. 그룹 수익률·비중·기여도·집중도 산출 → `group_period_stat`
 7. 순위 부여 (`rank_ret`, `rank_contrib`) 및 직전 기간 순위 조인 (`rank_delta`)
-8. 종목 기여도 상·하위 N + `OTHERS` → `group_member_contribution`
+8. 포함 종목 전체의 종목 기여도 → `group_member_contribution`
 9. 검증 (V-1 ~ V-9)
 10. `calc_version`, `calculated_at` 기록 후 커밋
 
@@ -127,7 +127,7 @@
 | `price_daily` | 약 2,900 종목 × 250 거래일/년 ≈ 73만 행/년 |
 | `security_period_return` | 2,900 × (52주 + 12월) ≈ 18.6만 행/년 |
 | `group_period_stat` | (26 + 11 + 테마) × 64 기간 ≈ 수천 행/년 |
-| `group_member_contribution` | 그룹당 최대 41행 × 그룹 수 × 64 ≈ 10만 행/년 |
+| `group_member_contribution` | 포함 종목 전체. 배타 스킴 기준 `security_period_return`과 같은 ≈ 18.6만 행/년 |
 
 `group_period_stat`은 매우 작다. **범프 차트 조회는 수백 행 단위**이므로 단일 인덱스 스캔으로 해결된다.
 
@@ -148,30 +148,12 @@
 
 ## 7. 운영 메타데이터
 
-```sql
-CREATE TABLE batch_run (
-    run_id        BIGINT PRIMARY KEY,
-    job_name      VARCHAR(32) NOT NULL,
-    market_code   VARCHAR(8),
-    target_scope  VARCHAR(128),          -- 예: 'W:2026-W03..2026-W05'
-    status        VARCHAR(16) NOT NULL,  -- RUNNING, SUCCEEDED, FAILED, BLOCKED
-    calc_version  VARCHAR(16),
-    started_at    TIMESTAMP NOT NULL,
-    finished_at   TIMESTAMP,
-    row_count     BIGINT,
-    message       TEXT
-);
+| 테이블 | 용도 |
+| --- | --- |
+| `batch_run` | 작업 실행 기록. 작업명, 시장, 대상 범위(예: `W:2026-W03..2026-W05`), 상태(`RUNNING`/`SUCCEEDED`/`FAILED`/`BLOCKED`), `calc_version`, 시작·종료 시각, 처리 행 수 |
+| `validation_result` | 실행별 검증 결과. 계산 검증 V-1 ~ V-9와 수집 검증 C-1 ~ C-13을 함께 기록하고 `severity`로 차단·경고를 구분한다 |
+| `recalc_request` | [§4](#4-재계산-정책)의 재계산 요청 |
 
-CREATE TABLE validation_result (
-    run_id     BIGINT NOT NULL REFERENCES batch_run(run_id),
-    rule_code  VARCHAR(8) NOT NULL,      -- V-1 ... V-9
-    scope      VARCHAR(128) NOT NULL,
-    passed     BOOLEAN NOT NULL,
-    observed   NUMERIC(24,12),
-    tolerance  NUMERIC(24,12),
-    detail     TEXT,
-    PRIMARY KEY (run_id, rule_code, scope)
-);
-```
+컬럼 정의는 [`theme_radar/db/migrations/`](../theme_radar/db/migrations/)의 SQL 파일, 규약은 [02 §8](02-domain-and-data-model.md#8-운영-테이블)을 따른다.
 
 - `calc_version`은 계산 로직의 시맨틱 버전이다. 로직 변경 시 반드시 증가시키고, 파생 행에 기록해 어떤 로직으로 산출된 값인지 추적 가능하게 한다.

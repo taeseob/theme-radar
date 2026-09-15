@@ -1,0 +1,7 @@
+# theme-radar 설정 (docs/09 §4.7)
+# 이 PC에만 해당하는 값이나 개인 값은 config.local.toml(git 제외)에 같은 형식으로 적는다. 같은 키를 덮어쓴다.
+
+[db]
+# 프로젝트 루트 기준 상대 경로 또는 절대 경로
+path = "data/theme_radar.sqlite3"
+busy_timeout_ms = 30000

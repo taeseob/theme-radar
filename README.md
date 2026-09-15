@@ -23,7 +23,7 @@
 | 문서 | 내용 |
 | --- | --- |
 | [01-requirements.md](docs/01-requirements.md) | 요구사항, 유니버스, 분류 체계, 기간 체계, 범위 경계, 용어 |
-| [02-domain-and-data-model.md](docs/02-domain-and-data-model.md) | 도메인 모델, ERD, 테이블 DDL, 입력 데이터 규격 |
+| [02-domain-and-data-model.md](docs/02-domain-and-data-model.md) | 도메인 모델, ERD, 테이블 목적·키·규약, 입력 데이터 규격 (DDL은 [migrations](theme_radar/db/migrations/)) |
 | [03-metrics-spec.md](docs/03-metrics-spec.md) | 지표 계산 명세(수익률·가중치·기여도·순위·집중도), 예외 처리, 검증 규칙 |
 | [04-pipeline.md](docs/04-pipeline.md) | 아키텍처, 배치 파이프라인, 재계산 정책, 데이터 품질 |
 | [05-api-spec.md](docs/05-api-spec.md) | REST API 명세 |
@@ -31,6 +31,20 @@
 | [07-price-ingestion.md](docs/07-price-ingestion.md) | 주가·상장주식수 수집 모듈: 출처 검증, yfinance·FinanceDataReader 사용 범위, 분할·병합 소급 갱신, 수집 단계 검증 |
 | [08-library-review.md](docs/08-library-review.md) | FinanceDataReader·yfinance 검토 기록과 채택 결정, Yahoo 분할 이벤트의 분사 혼입 |
 | [09-tech-stack.md](docs/09-tech-stack.md) | 기술 스택(Python·SQLite·FastAPI·ECharts)과 선택 이유, 저장소 구조, 배치 실행, 구현 순서 |
+
+## 개발 환경
+
+Python 3.12(pyenv) 기준이다. 기술 스택과 구조는 [09-tech-stack.md](docs/09-tech-stack.md)를 본다.
+
+```bash
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.lock   # 버전 고정 설치
+.venv\Scripts\python -m theme_radar init-db                # data/theme_radar.sqlite3 생성, 스키마 적용
+.venv\Scripts\python -m pytest                             # 테스트
+```
+
+- 의존성을 바꿀 때는 `requirements.txt` / `requirements-dev.txt`를 고치고 설치한 뒤 `pip freeze --exclude pip` 결과로 `requirements.lock`을 갱신한다.
+- 이 PC에만 해당하는 설정은 `config.local.toml`(git 제외)에 적는다.
 
 ## 표기 규약
 

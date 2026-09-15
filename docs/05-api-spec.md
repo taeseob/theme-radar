@@ -283,7 +283,7 @@ Base URL: `/api/v1`
 **규약**
 
 - `members`는 `contribution_in_group` 내림차순이다. `side=both`이면 상위 `limit`개와 하위 `limit`개를 모두 담고, 중복은 제거한다.
-- `others`는 반환되지 않은 나머지 종목의 합산이다. `sum(members.contribution_in_group) + others.contribution_in_group = summary.return` (오차 1e-9).
+- `others`는 반환되지 않은 나머지 종목의 합산이다. DB에는 포함 종목 전체의 기여도가 저장되어 있으므로([02 §5.5](02-domain-and-data-model.md#55-group_member_contribution)) 조회 시 더해 만든다. `sum(members.contribution_in_group) + others.contribution_in_group = summary.return` (오차 1e-9).
 - `contribution_in_universe = base_weight × contribution_in_group`.
 
 ### 5.2 `GET /sectors/{group_code}/history`

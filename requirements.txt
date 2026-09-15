@@ -1,0 +1,5 @@
+# 실행 직접 의존성 (docs/09 §5). 설치한 전체 버전은 requirements.lock에 있다
+yfinance==1.7.0
+finance-datareader==0.9.202
+fastapi==0.141.1
+uvicorn==0.53.0

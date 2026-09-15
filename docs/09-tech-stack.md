@@ -89,12 +89,12 @@ flowchart LR
 | 항목 | 규칙 |
 | --- | --- |
 | 파일 | `data/theme_radar.sqlite3` 하나. 원천·마스터·파생·운영 메타데이터를 함께 둔다. git에서 제외한다 |
-| 연결 설정 | `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=30000`을 연결마다 적용한다 |
+| 연결 설정 | `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=30000`을 연결마다 적용한다 (`theme_radar/db/connection.py`) |
+| 트랜잭션 | 연결은 자동 커밋 모드로 연다. 여러 문장을 쓰는 작업은 `transaction()`으로 묶으며 `BEGIN IMMEDIATE`로 쓰기 잠금을 먼저 잡는다 |
 | 읽기 연결 | API는 `file:...?mode=ro` URI로 연다. API 코드에서 쓰기가 일어날 수 없다 |
-| 스키마 변경 | `db/migrations/0001_*.sql` 번호순 SQL 파일. 적용 여부는 `PRAGMA user_version`으로 관리한다. 마이그레이션 도구는 쓰지 않는다 |
-| 숫자 | 수익률·비중은 `REAL`(배정밀도)로 저장한다. [03 §11](03-metrics-spec.md#11-정밀도-및-반올림)이 허용하는 방식이다 |
-| 날짜 | `TEXT` `YYYY-MM-DD`(거래소 현지 날짜), 시각은 ISO-8601 UTC. 07 §6과 같다 |
-| 백업 | `sqlite3.Connection.backup()`으로 날짜별 사본을 만든다. 주간 대사(07 §9.4) 뒤에 실행한다. 상장폐지 종목 이력처럼 출처에서 사라지는 데이터가 있어 DB는 다시 받을 수 없는 자산이다. 보관 위치와 보관 개수는 착수 시 정한다 |
+| 스키마 변경 | `theme_radar/db/migrations/NNNN_설명.sql` 번호순 SQL 파일이 테이블 정의의 단일 출처다. 파일 하나를 한 트랜잭션으로 적용하고, 적용 번호는 `PRAGMA user_version`으로 관리한다. 마이그레이션 도구는 쓰지 않는다 |
+| 숫자·날짜 | [02 §1.1](02-domain-and-data-model.md#11-저장-규약) 저장 규약을 따른다 |
+| 백업 | `sqlite3.Connection.backup()`으로 날짜별 사본을 만든다. 주간 대사(07 §9.4) 뒤에 실행한다. 상장폐지 종목 이력처럼 출처에서 사라지는 데이터가 있어 DB는 다시 받을 수 없는 자산이다. 보관 위치와 보관 개수는 6단계에서 정한다 |
 
 **전량 재계산과 배포 차단**
 
@@ -257,14 +257,14 @@ API 키·비밀번호는 없다(07 R-3).
 | --- | --- | --- | --- |
 | 실행 | yfinance | `prices` (US) | 1.7.0 (07 §5.3) |
 | 실행 | finance-datareader | `prices` (KR 일부) | 0.9.202 (07 §5.3) |
-| 실행 | fastapi | `api` | 착수 시 최신 안정판으로 고정 |
-| 실행 | uvicorn | `serve` | 〃 |
-| 개발 | pytest | `tests` | 〃 |
-| 개발 | httpx | API 테스트 (`TestClient`) | 〃 |
-| 화면 | Apache ECharts | `web/vendor/` | 〃 |
+| 실행 | fastapi | `api` | 0.141.1 |
+| 실행 | uvicorn | `serve` | 0.53.0 |
+| 개발 | pytest | `tests` | 9.1.1 |
+| 개발 | httpx | API 테스트 (`TestClient`) | 0.28.1 |
+| 화면 | Apache ECharts | `web/vendor/` | 5단계 착수 시 최신 안정판으로 고정 |
 
 - 가상환경은 프로젝트 루트 `.venv` 하나다. `requirements.txt`(실행 직접 의존성), `requirements-dev.txt`(개발), `requirements.lock`(`pip freeze` 결과)을 둔다.
-- FastAPI·Uvicorn이 함께 설치하는 하위 패키지는 설치 시 확인해 잠금 파일에 남긴다.
+- 2026-09-15 설치 결과 잠금 파일의 패키지는 49개다(pip 제외). yfinance·FinanceDataReader 쪽 32개는 [08 §5](08-library-review.md#5-공통-영향)의 버전과 같다.
 - 계산 엔진(`calc`)과 DB 계층(`db`)은 표준 라이브러리만 import한다.
 - 기존 일회성 스크립트(`scripts/fetch_wi26.py` 등)는 지금처럼 표준 라이브러리만 쓰고 전역 Python으로도 실행된다.
 
@@ -277,8 +277,9 @@ theme-radar/
 │   ├── config.py                # config.toml + config.local.toml
 │   ├── jobs.py                  # daily 등 작업 연결, batch_run 기록
 │   ├── db/
-│   │   ├── connection.py        # 연결 설정(WAL, foreign_keys, busy_timeout), 백업
-│   │   └── migrations/          # 0001_init.sql, ...
+│   │   ├── connection.py        # 연결 설정(WAL, foreign_keys, busy_timeout), 트랜잭션
+│   │   ├── migrate.py           # 마이그레이션 적용 (PRAGMA user_version)
+│   │   └── migrations/          # 0001_init.sql, ... 테이블 정의의 단일 출처
 │   ├── prices/                  # 주가 수집 모듈. 내부 구성은 07 §5.1과 같다 (store.py의 스키마 생성만 db/로 이동)
 │   ├── master/                  # 분류 체계·매핑·유니버스 적재 (02 §6)
 │   ├── calc/
@@ -366,18 +367,14 @@ theme-radar/
 
 ## 10. 구현 순서
 
-| 단계 | 내용 | 완료 기준 |
-| --- | --- | --- |
-| 1. 기반 | 테이블 설계(02 DDL의 SQLite 이식, 07 §6 추가 테이블 반영), `.venv`·의존성 고정, 패키지 골격, 설정, DB 연결·마이그레이션, CLI | `init-db`로 빈 DB가 만들어진다 |
-| 2. 수집·마스터 | 07 수집 모듈, 분류 체계·매핑·유니버스 적재 | 2025-01-01 이후 백필 완료, C-1 ~ C-13 차단 항목 통과 |
-| 3. 계산 | 기간 확정, 집계, 검증, 재계산 요청 처리 | 전 기간 V-1 ~ V-7 통과, 합성 데이터 테스트 통과, 전량 재계산 시간 측정 |
-| 4. API | 05 엔드포인트 | 05 예시와 같은 형식, 04 §6.3 응답 시간 목표 |
-| 5. 화면 | ECharts 범프 차트 프로토타입 → 06 전체 | 06 §3 필수 요소와 §6 상태 처리 확인 |
-| 6. 운영 | 작업 스케줄러 등록, 백업, `status` | 1주 무인 운영에서 `daily` 실패 없음 |
+| 단계 | 내용 | 완료 기준 | 상태 |
+| --- | --- | --- | --- |
+| 1. 기반 | 테이블 설계(02 DDL의 SQLite 이식, 07 §6 추가 테이블 반영), `.venv`·의존성 고정, 패키지 골격, 설정, DB 연결·마이그레이션, CLI | `init-db`로 빈 DB가 만들어진다 | 완료 (2026-09-15) |
+| 2. 수집·마스터 | 07 수집 모듈, 분류 체계·매핑·유니버스 적재 | 2025-01-01 이후 백필 완료, C-1 ~ C-13 차단 항목 통과 | |
+| 3. 계산 | 기간 확정, 집계, 검증, 재계산 요청 처리 | 전 기간 V-1 ~ V-7 통과, 합성 데이터 테스트 통과, 전량 재계산 시간 측정 | |
+| 4. API | 05 엔드포인트 | 05 예시와 같은 형식, 04 §6.3 응답 시간 목표 | |
+| 5. 화면 | ECharts 범프 차트 프로토타입 → 06 전체 | 06 §3 필수 요소와 §6 상태 처리 확인 | |
+| 6. 운영 | 작업 스케줄러 등록, 백업, `status` | 1주 무인 운영에서 `daily` 실패 없음 | |
 
-**후속 문서 작업**
-
-| 작업 | 대상 문서 |
-| --- | --- |
-| SQLite 타입으로 DDL 이식 (1단계) | [02](02-domain-and-data-model.md) |
-| `.gitignore`에 `data/*.sqlite3`, `data/raw/prices/`, `data/cache/`, `logs/`, `config.local.toml` 추가 (1단계) | — |
+- 패키지 골격은 단계마다 쓰는 모듈만 만든다. 1단계에서는 `config.py`, `__main__.py`(`init-db`), `db/`를 만들었다. `prices/`, `master/`, `calc/`, `api/`, `web/`은 해당 단계에서 추가한다.
+- 1단계의 테이블 설계 결정은 [02 §9](02-domain-and-data-model.md#9-결정-기록)에 기록했다.

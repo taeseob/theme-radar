@@ -218,75 +218,16 @@ finance-datareader==0.9.202
 
 ## 6. 저장소 스키마
 
-수집 결과는 애플리케이션 DB인 SQLite 파일 하나(`data/theme_radar.sqlite3`)에 적재한다. 원천·마스터·파생 테이블을 같은 파일에 둔다 ([09 §4.1](09-tech-stack.md#41-db-sqlite)). `security`, `universe_membership`, `trading_calendar`는 [02](02-domain-and-data-model.md)의 정의를 그대로 따른다. 아래 `price_daily`는 02 §4.2에 **출처 추적 컬럼을 더한 것**이고, 나머지 네 테이블은 이 모듈을 위해 **새로 추가**한다. 확정되면 02 문서에 반영한다.
+수집 결과는 애플리케이션 DB인 SQLite 파일 하나(`data/theme_radar.sqlite3`)에 적재한다. 원천·마스터·파생 테이블을 같은 파일에 둔다 ([09 §4.1](09-tech-stack.md#41-db-sqlite)). 테이블 정의의 단일 출처는 [`theme_radar/db/migrations/`](../theme_radar/db/migrations/)의 SQL 파일이고, 테이블 규약은 [02](02-domain-and-data-model.md)에 있다. 이 모듈이 쓰는 테이블은 다음과 같다.
 
-```sql
-CREATE TABLE price_daily (
-    security_id    INTEGER NOT NULL REFERENCES security(security_id),
-    trade_date     TEXT    NOT NULL,              -- 'YYYY-MM-DD', 거래소 현지 날짜
-    close_raw      REAL    NOT NULL,              -- 무수정 종가. 적재 후 바꾸지 않는다
-    adj_factor     REAL    NOT NULL DEFAULT 1.0,  -- 최신 거래일 = 1
-    close_adj      REAL    NOT NULL,              -- close_raw * adj_factor
-    shares_listed  INTEGER,
-    market_cap     REAL,                          -- close_raw * shares_listed
-    volume         INTEGER,
-    trade_status   TEXT    NOT NULL,              -- NORMAL, SUSPENDED, HALTED, NO_TRADE
-    -- 이하 추가 컬럼
-    price_source   TEXT    NOT NULL,              -- NAVER_MPRICE, YFINANCE
-    adj_source     TEXT    NOT NULL,              -- NAVER_SISEJSON, YFINANCE
-    fetched_at     TEXT    NOT NULL,              -- ISO-8601 UTC
-    adj_updated_at TEXT,                          -- 마지막 소급 갱신 시각
-    PRIMARY KEY (security_id, trade_date)
-);
-
-CREATE TABLE corporate_action (
-    security_id   INTEGER NOT NULL REFERENCES security(security_id),
-    ex_date       TEXT    NOT NULL,   -- 권리락일(수정계수가 바뀌는 첫 거래일)
-    action_type   TEXT    NOT NULL,   -- SPLIT, REVERSE_SPLIT, BONUS_ISSUE, STOCK_DIVIDEND, SPINOFF, UNKNOWN
-    price_factor  REAL    NOT NULL,   -- ex_date 이전 가격에 곱하는 값. 10:1 분할 = 0.1, 1:10 병합 = 10
-    share_ratio   REAL,               -- 이후 주식수 / 이전 주식수. 10:1 분할 = 10. 주식수에 반영하지 않는 이벤트는 NULL
-    source        TEXT    NOT NULL,   -- NAVER_FACTOR_JUMP, YFINANCE_SPLIT, MANUAL
-    detected_at   TEXT    NOT NULL,
-    PRIMARY KEY (security_id, ex_date, source)
-);
-
-CREATE TABLE shares_observation (
-    security_id  INTEGER NOT NULL REFERENCES security(security_id),
-    as_of_date   TEXT    NOT NULL,
-    shares       INTEGER NOT NULL,
-    basis        TEXT    NOT NULL,    -- AS_REPORTED (분할 소급 없음) | SPLIT_ADJUSTED
-    source       TEXT    NOT NULL,    -- DAUM_QUOTE, FDR_KRX_CACHE, SEC_DEI, YF_INFO
-    observed_at  TEXT    NOT NULL,
-    PRIMARY KEY (security_id, as_of_date, source)
-);
-
-CREATE TABLE restatement_log (
-    run_id         INTEGER NOT NULL,
-    security_id    INTEGER NOT NULL,
-    reason         TEXT    NOT NULL,  -- FACTOR_CHANGED, NEW_SPLIT_EVENT, RECONCILE, SOURCE_SWITCH
-    affected_from  TEXT    NOT NULL,
-    affected_to    TEXT    NOT NULL,
-    rows_updated   INTEGER NOT NULL,
-    max_rel_change REAL,              -- max |new_factor / old_factor - 1|
-    created_at     TEXT    NOT NULL,
-    PRIMARY KEY (run_id, security_id)
-);
-
-CREATE TABLE special_event (
-    event_id      INTEGER PRIMARY KEY,
-    market_code   TEXT    NOT NULL,   -- KR, US
-    event_date    TEXT    NOT NULL,   -- 발생일. 구간 사건이면 시작일
-    end_date      TEXT,               -- 구간 사건의 종료일
-    event_type    TEXT    NOT NULL,   -- LISTING, DELISTING, RECLASS, SHARE_CHANGE, CORP_ACTION, DATA_GAP
-    security_id   INTEGER REFERENCES security(security_id),  -- 시장 단위 사건이면 NULL
-    group_code    TEXT,               -- 사건 시점의 섹터 (WI26 대분류, GICS 섹터)
-    market_cap    REAL,               -- 사건 규모. 통화는 시장 기준. 모르면 NULL
-    sector_share  REAL,               -- market_cap / 사건 시점 섹터 시총
-    detail        TEXT    NOT NULL,   -- 사람이 읽는 설명
-    created_at    TEXT    NOT NULL,
-    UNIQUE (market_code, event_type, security_id, event_date)
-);
-```
+| 테이블 | 이 모듈에서의 용도 | 02 |
+| --- | --- | --- |
+| `security`, `universe_membership`, `trading_calendar` | 종목 마스터, 유니버스 편입 이력, 거래일 | [§3](02-domain-and-data-model.md#3-마스터-테이블), [§4.1](02-domain-and-data-model.md#41-trading_calendar) |
+| `price_daily` | 무수정·수정 종가, 수정계수, 주식수, 시총, 거래 상태, 출처 추적 컬럼(`price_source`, `adj_source`, `fetched_at`, `adj_updated_at`) | [§4.2](02-domain-and-data-model.md#42-price_daily) |
+| `shares_observation` | 출처별 상장주식수 관측치. `basis`는 공시 원값(`AS_REPORTED`)과 분할 소급값(`SPLIT_ADJUSTED`)을 구분한다 | [§4.3](02-domain-and-data-model.md#43-수집-보조-테이블) |
+| `corporate_action` | 기업행위. `price_factor`는 권리락일 이전 가격에 곱하는 값(10:1 분할 = 0.1), `share_ratio`는 이후 ÷ 이전 주식수(10:1 분할 = 10, 주식수에 반영하지 않는 이벤트는 `NULL`) | [§4.3](02-domain-and-data-model.md#43-수집-보조-테이블) |
+| `special_event` | 특이사항 ([§11.2](#112-특이사항)) | [§4.3](02-domain-and-data-model.md#43-수집-보조-테이블) |
+| `restatement_log`, `batch_run`, `validation_result`, `recalc_request` | 소급 갱신 기록, 실행 이력, 검증 결과(C-1 ~ C-13), 재계산 요청 | [§8](02-domain-and-data-model.md#8-운영-테이블) |
 
 - `price_daily.shares_listed`는 `shares_observation`에서 as-of 규칙([§7.4](#74-상장주식수), [§8.3](#83-주식수))으로 산출해 채운다. 같은 날 관측치가 여러 출처에 있으면 표의 우선순위를 따른다. 관측치를 따로 두는 이유는 출처와 기준(원값·분할 소급값)을 추적하기 위해서다.
 
@@ -298,7 +239,8 @@ CREATE TABLE special_event (
 
 - 가동 전 근사 구간(G-1, G-3)은 관측치를 만들지 않고 `price_daily.shares_listed`에 계산값을 바로 넣는다.
 - 가격은 `REAL`로 저장한다. KR은 정수 원 단위, US는 역산 후 소수 2자리(센트)로 반올림한다.
-- 실행 이력은 [04 §7](04-pipeline.md#7-운영-메타데이터)의 `batch_run`을 쓴다.
+- 이미 폐지된 KR 종목에서 원종가를 확정할 수 없는 날([§7.2](#72-무수정-종가))은 `close_raw`, `adj_factor`, `market_cap`을 `NULL`로 두고 `close_adj`만 저장한다.
+- 출처 코드(`price_source` 등)는 `NAVER_MPRICE`, `NAVER_SISEJSON`, `YFINANCE`, `DAUM_QUOTE`, `FDR_KRX_CACHE`, `SEC_DEI`, `YF_INFO`, `NAVER_FACTOR_JUMP`, `YFINANCE_SPLIT`, `MANUAL`을 쓴다.
 
 ## 7. 한국 수집 절차
 
@@ -699,7 +641,7 @@ def restate(conn, sec, source, run_id, now):
     ).fetchall()
 
     changed, max_rel = [], 0.0
-    with conn:  # sqlite3: 블록 안에서 예외가 나면 롤백
+    with transaction(conn):  # theme_radar.db.transaction: BEGIN IMMEDIATE, 예외가 나면 롤백
         for d, close_raw, old in rows:
             if d not in adjusted:
                 continue
@@ -887,7 +829,6 @@ Yahoo 분할 이벤트가 없는 2,135종목 중 1,989종목은 2025-01-02 ~ 202
 
 | 작업 | 대상 문서 |
 | --- | --- |
-| 신규 테이블 4개와 `price_daily` 추가 컬럼 반영 (D-4) | [02](02-domain-and-data-model.md) |
 | `KR_COMMON` 제외 대상에 외국기업 전체와 인프라·부동산 펀드 명시 (D-3) | [01 §3.1](01-requirements.md#31-kr_common) |
 | 특이사항 조회 API | [05](05-api-spec.md) |
 | 특이사항 목록 화면 | [06](06-ui-spec.md) |

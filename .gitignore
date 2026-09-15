@@ -5,6 +5,16 @@ __pycache__/
 .venv/
 venv/
 
+.pytest_cache/
+
+# Local data and runtime (docs/09 §6)
+data/*.sqlite3
+data/*.sqlite3-*
+data/raw/prices/
+data/cache/
+logs/
+config.local.toml
+
 # OS
 .DS_Store
 Thumbs.db

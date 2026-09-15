@@ -23,7 +23,7 @@ cal_start, cal_end  <- 기간 단위별 캘린더 경계
   W: ISO-8601 주 (월요일 시작, 일요일 종료), 식별자는 ISO week-year 기준 'YYYY-Www'
   M: 역월 1일 ~ 말일, 식별자 'YYYY-MM'
 
-E(t) = max{ d : d in trading_calendar(market), is_open = true, cal_start <= d <= cal_end }
+E(t) = max{ d : d in trading_calendar(market), cal_start <= d <= cal_end }   -- trading_calendar에는 거래일만 있다
 B(t) = E(t-1)
 ```
 
