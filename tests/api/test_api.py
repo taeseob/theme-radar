@@ -166,6 +166,15 @@ def test_cache_headers(client, con):
     assert stale.json()["meta"]["stale"] is True and stale.headers["cache-control"] == "no-store"
 
 
+@pytest.mark.parametrize("path", ["/", "/js/main.js"])
+def test_web_files_are_revalidated_on_every_load(client, path):
+    """빌드 없는 화면은 파일 이름이 그대로라, 캐시 지시가 없으면 새로 고쳐도 옛 JS 모듈이 캐시에서 나온다."""
+    first = get(client, path)
+    assert first.headers["cache-control"] == "no-cache"
+    again = client.get(path, headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304 and again.headers["cache-control"] == "no-cache"
+
+
 def test_serve_uses_the_db_flag(monkeypatch, con, db_path):
     """--db는 선언만 하고 쓰지 않으면 조용히 운영 DB를 연다."""
     import argparse

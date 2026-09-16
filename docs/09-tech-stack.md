@@ -159,6 +159,7 @@ flowchart LR
 | 타입 점검 | 파일 첫 줄 `// @ts-check`와 JSDoc 타입 주석. VS Code 내장 기능으로 동작해 Node.js가 필요 없다 |
 | MIME 타입 | 윈도는 레지스트리 설정에 따라 `.js`를 `text/plain`으로 판정할 수 있고, 그러면 브라우저가 모듈 로드를 거부한다. 서버 시작 시 `mimetypes.add_type("text/javascript", ".js")`를 등록한다 |
 | 외부 네트워크 | CDN을 쓰지 않는다. 라이브러리 파일은 `web/vendor/`에 버전을 파일명에 넣어 둔다 |
+| 캐시 | 화면 파일은 `Cache-Control: no-cache`로 준다. 파일 이름이 그대로라, 캐시 지시가 없으면 브라우저가 `Last-Modified`로 신선도를 추정해 새로 고쳐도 HTML만 새로 받고 JS 모듈은 옛 것을 쓴다(2026-09-16 섹터 시가총액 차트를 더한 뒤 실제로 차트가 나오지 않았다). 매번 `ETag`로 확인하고, 바뀌지 않았으면 304다 |
 
 **검토한 대안**
 

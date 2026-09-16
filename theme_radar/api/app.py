@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from theme_radar.api.deps import ApiError
@@ -16,6 +16,19 @@ from theme_radar.calc import CALC_VERSION
 from theme_radar.config import ROOT, load_config, resolve_path
 
 WEB_DIR = ROOT / "web"
+
+
+class WebFiles(StaticFiles):
+    """화면 파일 (docs/09 §4.4). 빌드 없이 같은 파일 이름으로 고쳐 쓰므로, 브라우저가 쓸 때마다 ETag로 확인하게 한다.
+
+    Cache-Control이 없으면 브라우저가 Last-Modified로 신선도를 추정해(경과 시간의 10%), 새로 고쳐도
+    HTML만 새로 받고 JS 모듈은 옛 것을 캐시에서 쓴다. 바뀌지 않았으면 304라 로컬에서는 비용이 없다.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def create_app(config: dict[str, Any] | None = None, db_path: Path | str | None = None) -> FastAPI:
@@ -46,7 +59,7 @@ def create_app(config: dict[str, Any] | None = None, db_path: Path | str | None 
     # 윈도는 레지스트리에 따라 .js를 text/plain으로 주기도 한다. 그러면 브라우저가 ES 모듈을 거부한다
     mimetypes.add_type("text/javascript", ".js")
     if WEB_DIR.is_dir():
-        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+        app.mount("/", WebFiles(directory=WEB_DIR, html=True), name="web")
     return app
 
 
