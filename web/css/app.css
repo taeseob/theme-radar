@@ -62,9 +62,13 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .summary { font-size: 13px; color: var(--ink-2); }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-.chart { height: 460px; }
-/* 좁은 화면에서는 차트만 가로로 스크롤한다 (docs/06 §8) */
-.chart-scroll { overflow-x: auto; }
+/* 차트 높이는 오른쪽 아래 모서리를 끌어 바꾼다. 좁은 화면에서는 차트만 가로로 스크롤한다 (docs/06 §3.2, §8) */
+.chart-scroll { overflow: auto; resize: vertical; height: 460px; min-height: 240px; }
+.chart { height: 100%; position: relative; }
+/* 범프 차트 툴팁. 마우스 포인터 왼쪽에 놓는다 (bump-chart.js showTip) */
+.chart-tip { position: absolute; z-index: 2; pointer-events: none; padding: 8px 10px; white-space: nowrap;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 12px; line-height: 1.55; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); }
 .spark { height: 64px; }
 .sparklines { display: grid; gap: 8px; }
 .sparklines figcaption { font-size: 11px; color: var(--muted); }
@@ -77,8 +81,10 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .stat .v { font-size: 18px; font-variant-numeric: tabular-nums; }
 
 .rows { display: grid; gap: 2px; }
-.row { display: grid; grid-template-columns: 190px 1fr 96px 104px 56px auto; gap: 10px; align-items: center;
+.row { display: grid; gap: 10px; align-items: center;
   padding: 4px 6px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+/* 섹터 행: 섹터 · 막대 · 수익률 · 시총 비중 · 시장 기여 · 시장 대비 · 순위 변동 · 특징 */
+#snapshot .row { grid-template-columns: 190px 1fr 88px 80px 84px 64px 64px auto; }
 .row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .row.clickable { cursor: pointer; }
 .row.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -88,7 +94,15 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .row .muted, .muted { color: var(--muted); }
 .row.unmapped .name { color: var(--muted); }
 .bar-cell { position: relative; height: 16px; }
-.bar-cell .zero { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid var(--grid); }
+/* 기준 0 선. 행 사이 여백까지 이어 붙여 열을 가르는 한 줄로 보이게 한다 */
+.bar-cell .zero { position: absolute; left: 50%; top: -5px; bottom: -5px; border-left: 1px solid var(--line); }
+/* 머리글의 막대 눈금: 왼쪽 끝 −최대, 가운데 0, 오른쪽 끝 +최대 */
+.bar-cell.axis { height: 14px; }
+.bar-cell.axis .zero { top: 1px; }
+.bar-cell .axis-end, .bar-cell .axis-zero { position: absolute; top: 0; }
+.bar-cell .axis-end.left { left: 0; }
+.bar-cell .axis-end.right { right: 0; }
+.bar-cell .axis-zero { left: 50%; transform: translateX(-50%); padding: 0 3px; background: var(--surface); }
 .bar-cell .fill { position: absolute; top: 3px; height: 10px; border-radius: 3px; }
 .bar-cell .fill.pos-bg { background: var(--up); }
 .bar-cell .fill.neg-bg { background: var(--down); }
@@ -101,6 +115,10 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 /* 목록 머리글 행. 값 행과 같은 격자를 쓰되 눌리지 않는다 */
 .row.head { color: var(--muted); font-size: 11px; padding-bottom: 2px; border-bottom: 1px solid var(--grid); }
 .row.head:hover { background: none; }
+/* 정렬 기준을 바꿀 수 있는 열 */
+.row.head .sortable { cursor: pointer; }
+.row.head .sortable:hover { color: var(--ink-2); }
+.row.head .active { color: var(--ink-2); font-weight: 600; }
 .gauge { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--grid); }
 .gauge > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
 .stat.badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; border-style: dashed; }
@@ -130,9 +148,10 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 @media (max-width: 1280px) { .split { grid-template-columns: 1fr; } }
 @media (max-width: 768px) {
   main { padding: 10px; }
-  .chart { height: 380px; min-width: 620px; }
+  .chart-scroll { height: 380px; }
+  .chart { min-width: 620px; }
   .head-right { margin-left: 0; }
-  .row { grid-template-columns: minmax(0, 1fr) 92px 68px; }
+  #snapshot .row { grid-template-columns: minmax(0, 1fr) 92px 68px; }
   #members .row { grid-template-columns: minmax(0, 1fr) 72px 60px 62px; }
   .row .hide-narrow, #events .detail { display: none; }
   #events .row { grid-template-columns: 88px 82px minmax(0, 1fr); }

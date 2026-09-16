@@ -11,6 +11,8 @@ import * as theme from "./theme.js";
 
 const NARROW = 768;                 // 이 아래에서는 표시 섹터 수를 상위 5로 강제한다 (docs/06 §8)
 const MAX_PERIODS = { W: 260, M: 120 };
+const HEIGHT_KEY = "theme-radar-bump-height";
+const MIN_HEIGHT = 240;             // app.css의 .chart-scroll min-height와 같다
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 const sel = (id) => /** @type {HTMLSelectElement} */ (document.getElementById(id));
 
@@ -87,13 +89,14 @@ async function loadSchemes(universe, current) {
 function drawBump(current) {
   const payload = cache.ranks;
   const asTable = current.view === "table";
-  $("bump").hidden = asTable;
+  $("bump-wrap").hidden = asTable;
   $("bump-table").hidden = !asTable;
   $("table-toggle").textContent = asTable ? "차트로 보기" : "표로 보기";
   if (asTable) $("bump-table").innerHTML = bump.tableHtml(payload, current.mode);
   else bump.render($("bump"), payload, { mode: current.mode, calendar: cache.calendar.map, onPick: pick });
   const others = payload.data.others_count;
-  $("bump-hint").innerHTML = "선을 클릭하면 아래에 섹터 상세가 열린다. 점선 구간은 아직 끝나지 않은 기간(잠정)이다."
+  $("bump-hint").innerHTML = "선이나 점에 마우스를 올리면 그 기간의 값이 뜨고, 클릭하면 아래에 섹터 상세가 열린다."
+    + " 차트 오른쪽 아래 모서리를 끌면 높이가 바뀐다."
     + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "");
 }
 
@@ -210,6 +213,38 @@ async function refresh(force = false) {
 
 // ── 이벤트 연결 ───────────────────────────────────────────────────────────────
 
+/** 차트 높이는 사용자가 끌어 정하고, 다음에 열 때도 유지한다 (docs/06 §3.2) */
+function bindChartHeight() {
+  const wrap = $("bump-wrap");
+  try {
+    const saved = Number(localStorage.getItem(HEIGHT_KEY));
+    if (saved >= MIN_HEIGHT) wrap.style.height = `${saved}px`;
+  } catch (error) { /* 저장소를 못 써도 기본 높이로 동작한다 */ }
+  let pending = 0;
+  let width = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(pending);
+    pending = requestAnimationFrame(() => {
+      bump.repaint();            // 높이가 바뀌면 끝단 라벨을 다시 고른다
+      // 폭이 같이 바뀌었으면 창 크기 변화다. 사용자가 끈 높이만 기억한다
+      const dragged = width === wrap.clientWidth;
+      width = wrap.clientWidth;
+      try {
+        if (dragged) localStorage.setItem(HEIGHT_KEY, String(Math.round(wrap.clientHeight)));
+      } catch (error) { /* 저장 못 해도 화면은 동작한다 */ }
+    });
+  }).observe(wrap);
+}
+
+/** 스냅샷 머리글의 정렬 열. 컨트롤의 정렬 선택과 같은 값을 쓴다 (docs/06 §4) */
+function sortSnapshot(target) {
+  const cell = /** @type {HTMLElement|null} */ (target.closest("[data-sort]"));
+  if (!cell) return false;
+  sel("snapshot-sort").value = cell.dataset.sort;
+  refresh(true);
+  return true;
+}
+
 /** 같은 섹터를 다시 고르면 선택을 해제한다 (docs/06 §3.2) */
 function pick(groupCode, periodId) {
   const current = state.read();
@@ -229,17 +264,22 @@ function bind() {
   $("table-toggle").addEventListener("click", () =>
     state.update({ view: state.read().view === "table" ? "chart" : "table" }));
   $("snapshot").addEventListener("click", (e) => {
-    const row = /** @type {HTMLElement} */ (e.target).closest("[data-group]");
+    const target = /** @type {HTMLElement} */ (e.target);
+    if (sortSnapshot(target)) return;
+    const row = target.closest("[data-group]");
     if (row) pick(/** @type {HTMLElement} */ (row).dataset.group);
   });
   $("snapshot").addEventListener("keydown", (e) => {
     const event = /** @type {KeyboardEvent} */ (e);
     if (event.key !== "Enter" && event.key !== " ") return;
-    const row = /** @type {HTMLElement} */ (event.target).closest("[data-group]");
+    const target = /** @type {HTMLElement} */ (event.target);
+    const row = target.closest("[data-sort], [data-group]");
     if (!row) return;
     event.preventDefault();
+    if (sortSnapshot(target)) return;
     pick(/** @type {HTMLElement} */ (row).dataset.group);
   });
+  bindChartHeight();
   window.addEventListener("resize", () => drilldown.resize());
 }
 
