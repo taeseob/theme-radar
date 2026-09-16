@@ -85,7 +85,7 @@ def cmd_aggregate(args: argparse.Namespace, config: dict[str, Any]) -> int:
 
 
 def cmd_daily(args: argparse.Namespace, config: dict[str, Any]) -> int:
-    """수집 → 집계까지 이어서 실행한다 (docs/09 §4.6). 작업 스케줄러가 부르는 명령이다."""
+    """수집 → 집계까지 이어서 실행한다 (docs/09 §4.6). 지금은 손으로 부른다 (T-13)."""
     from theme_radar.prices.cli import collect_market
 
     con = open_db(args, config)
@@ -94,6 +94,22 @@ def cmd_daily(args: argparse.Namespace, config: dict[str, Any]) -> int:
         return code
     args.full = False
     return run_aggregate(con, args, config)
+
+
+def cmd_status(args: argparse.Namespace, config: dict[str, Any]) -> int:
+    """지금 데이터가 최신인지와 무엇을 먼저 돌려야 하는지 보여 준다 (docs/09 §4.6)."""
+    from theme_radar import status
+
+    path = db_path(args, config)
+    if not path.exists():
+        raise SystemExit(f"DB가 없다: {path}. 먼저 python -m theme_radar init-db를 실행한다")
+    con = connect(path, readonly=True, busy_timeout_ms=config["db"]["busy_timeout_ms"])
+    try:
+        report = status.collect(con, path)
+    finally:
+        con.close()
+    print(status.render(report))
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
@@ -131,11 +147,15 @@ def build_parser() -> argparse.ArgumentParser:
     aggregate.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
     aggregate.set_defaults(func=cmd_aggregate)
 
-    daily = commands.add_parser("daily", help="수집과 집계를 이어서 실행한다 (작업 스케줄러용)")
+    daily = commands.add_parser("daily", help="수집과 집계를 이어서 실행한다 (status가 시키면 실행한다)")
     daily.add_argument("--market", required=True, choices=["KR", "US"])
     daily.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
     daily.add_argument("--no-raw", action="store_true", help="수집 원문을 저장하지 않는다")
     daily.set_defaults(func=cmd_daily)
+
+    status_cmd = commands.add_parser("status", help="데이터 최신 여부와 다음에 할 일을 보여 준다")
+    status_cmd.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
+    status_cmd.set_defaults(func=cmd_status)
 
     serve = commands.add_parser("serve", help="API와 화면을 띄운다 (docs/05, 06)")
     serve.add_argument("--port", type=int, help="기본값: config.toml의 api.port")
