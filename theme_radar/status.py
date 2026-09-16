@@ -101,9 +101,9 @@ def _market(con: sqlite3.Connection, market: str) -> MarketState:
     state.pending_recalc = con.execute(
         "SELECT COUNT(*) FROM recalc_request WHERE market_code = ? AND processed_at IS NULL", (market,)).fetchone()[0]
 
-    command = f"python -m theme_radar daily --market {market}"
+    command = f".venv\\Scripts\\python -m theme_radar daily --market {market}"
     if not last_price:
-        state.todo.append(f"{market}: 가격이 없다 → python -m theme_radar prices backfill --market {market}")
+        state.todo.append(f"{market}: 가격이 없다 → .venv\\Scripts\\python -m theme_radar prices backfill --market {market}")
     elif (state.price_lag_days or 0) > STALE_DAYS:
         state.todo.append(f"{market}: 가격이 {last_price}까지다. 거래일 {last_calendar}보다 뒤처졌다 → {command}")
     if state.pending_recalc:
@@ -111,7 +111,7 @@ def _market(con: sqlite3.Connection, market: str) -> MarketState:
     stale_calc = [p for p in state.periods if p.calc_version and p.calc_version != CALC_VERSION]
     if stale_calc:
         state.todo.append(f"{market}: 집계가 옛 calc_version({stale_calc[0].calc_version})으로 남아 있다 "
-                          f"→ python -m theme_radar aggregate --market {market} --full")
+                          f"→ .venv\\Scripts\\python -m theme_radar aggregate --market {market} --full")
     return state
 
 
@@ -195,5 +195,5 @@ def render(status: Status) -> str:
                   "  " + ", ".join(f"{w['rule_code']} {w['n']}건" for w in status.warnings)]
 
     lines += ["", "할 일"]
-    lines += [f"  {item}" for item in status.todo] or ["  없음. python -m theme_radar serve 로 본다"]
+    lines += [f"  {item}" for item in status.todo] or ["  없음. .venv\\Scripts\\python -m theme_radar serve 로 본다"]
     return "\n".join(lines)

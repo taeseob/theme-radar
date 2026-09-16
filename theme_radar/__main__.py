@@ -19,7 +19,7 @@ def open_db(args: argparse.Namespace, config: dict[str, Any]):
     from theme_radar.db.migrate import list_migrations
     con = connect(db_path(args, config), busy_timeout_ms=config["db"]["busy_timeout_ms"])
     if schema_version(con) != len(list_migrations()):
-        raise SystemExit("DB 스키마가 최신이 아니다. 먼저 python -m theme_radar init-db를 실행한다")
+        raise SystemExit("DB 스키마가 최신이 아니다. 먼저 .venv\\Scripts\\python -m theme_radar init-db를 실행한다")
     return con
 
 
@@ -42,7 +42,7 @@ def cmd_load_mapping(args: argparse.Namespace, config: dict[str, Any]) -> int:
     result = load_scheme(con, args.scheme, config["collect"]["start_date"])
     if result.missing_tickers:
         print(f"적재하지 않았다. 종목 마스터에 없는 티커 {len(result.missing_tickers)}개: {result.missing_tickers[:30]}")
-        print(f"먼저 python -m theme_radar prices universe --market {'KR' if args.scheme == 'WI26' else 'US'}을 실행한다")
+        print(f"먼저 .venv\\Scripts\\python -m theme_radar prices universe --market {'KR' if args.scheme == 'WI26' else 'US'}을 실행한다")
         return 1
     print(f"{args.scheme}: 그룹 {result.groups}개, 매핑 {result.mappings}종목 ({result.source_batch})")
     return 0
@@ -102,7 +102,7 @@ def cmd_status(args: argparse.Namespace, config: dict[str, Any]) -> int:
 
     path = db_path(args, config)
     if not path.exists():
-        raise SystemExit(f"DB가 없다: {path}. 먼저 python -m theme_radar init-db를 실행한다")
+        raise SystemExit(f"DB가 없다: {path}. 먼저 .venv\\Scripts\\python -m theme_radar init-db를 실행한다")
     con = connect(path, readonly=True, busy_timeout_ms=config["db"]["busy_timeout_ms"])
     try:
         report = status.collect(con, path)
@@ -127,7 +127,7 @@ def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
 def build_parser() -> argparse.ArgumentParser:
     from theme_radar.prices.cli import add_commands as add_prices_commands
 
-    parser = argparse.ArgumentParser(prog="python -m theme_radar")
+    parser = argparse.ArgumentParser(prog=".venv\\Scripts\\python -m theme_radar")
     commands = parser.add_subparsers(dest="command", required=True, metavar="<명령>")
 
     init_db = commands.add_parser("init-db", help="DB 파일을 만들고 스키마 마이그레이션을 적용한다")
