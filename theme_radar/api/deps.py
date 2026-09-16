@@ -78,8 +78,9 @@ class PeriodRange:
         return self.rows[-1]["end_date"]
 
 
-def period_range(con: sqlite3.Connection, scope: Scope, from_id: str | None, to_id: str | None) -> PeriodRange:
-    """구간은 양끝 포함이다. 생략하면 최신 기간에서 52기간 전까지다 (docs/05 §1.1)."""
+def period_range(con: sqlite3.Connection, scope: Scope, from_id: str | None, to_id: str | None,
+                 minimum: int = DEFAULT_PERIODS) -> PeriodRange:
+    """구간은 양끝 포함이다. 생략하면 최신 기간에서 `minimum`기간 전까지다 (docs/05 §1.1)."""
     periods = con.execute(
         "SELECT period_id, period_seq, cal_start, cal_end, base_date, end_date, trading_days, is_closed "
         "FROM period_calendar WHERE market_code = ? AND period_type = ? AND base_date IS NOT NULL ORDER BY period_seq",
@@ -94,7 +95,7 @@ def period_range(con: sqlite3.Connection, scope: Scope, from_id: str | None, to_
         return by_id[period_id]["period_seq"]
 
     to_seq = seq_of(to_id, "to") if to_id else periods[-1]["period_seq"]
-    from_seq = seq_of(from_id, "from") if from_id else max(periods[0]["period_seq"], to_seq - DEFAULT_PERIODS + 1)
+    from_seq = seq_of(from_id, "from") if from_id else max(periods[0]["period_seq"], to_seq - minimum + 1)
     if from_seq > to_seq:
         raise ApiError(400, "INVALID_PARAMETER", "from이 to보다 뒤다", "from")
     if to_seq - from_seq + 1 > MAX_PERIODS[scope.period_type]:

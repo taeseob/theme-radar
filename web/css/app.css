@@ -1,0 +1,140 @@
+/* 색 토큰은 docs/02 §3.4의 팔레트를 따른다. 섹터 색은 서버가 주고, 화면은 라이트/다크 단계만 바꾼다 */
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --page: #f9f9f7;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --line: #c3c2b7;
+  --border: rgba(11, 11, 11, .12);
+  --up: #e34948;
+  --down: #2a78d6;
+  --accent: #2a78d6;
+  --warn: #fab219;
+  font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --page: #0d0d0d;
+  --ink: #fff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --line: #383835;
+  --border: rgba(255, 255, 255, .14);
+  --up: #e66767;
+  --down: #3987e5;
+  --accent: #3987e5;
+}
+/* 미국 시장은 상승 녹색·하락 적색 (docs/06 §4) */
+body[data-market="US"] { --up: #008300; --down: #e34948; }
+:root[data-theme="dark"] body[data-market="US"] { --up: #0ca30c; --down: #e66767; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-size: 14px; }
+h1 { font-size: 16px; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 15px; margin: 0; }
+h3 { font-size: 13px; margin: 0 0 8px; color: var(--ink-2); font-weight: 600; }
+main { padding: 16px; display: grid; gap: 16px; max-width: 1600px; margin: 0 auto; }
+footer { padding: 12px 16px 24px; color: var(--muted); font-size: 12px; max-width: 1600px; margin: 0 auto; }
+
+.bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+label { color: var(--ink-2); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { font: inherit; font-size: 13px; padding: 4px 10px; background: var(--surface); color: var(--ink-2);
+  border: 0; cursor: pointer; }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.ghost { font: inherit; font-size: 12px; padding: 4px 10px; background: transparent; color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.ghost:hover { color: var(--ink); }
+#theme-toggle { margin-left: auto; }
+
+/* min-width:0이 없으면 격자 칸이 내용 너비만큼 벌어져 카드 안에서 스크롤되지 않는다 */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.summary { font-size: 13px; color: var(--ink-2); }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.chart { height: 460px; }
+/* 좁은 화면에서는 차트만 가로로 스크롤한다 (docs/06 §8) */
+.chart-scroll { overflow-x: auto; }
+.spark { height: 64px; }
+.sparklines { display: grid; gap: 8px; }
+.sparklines figcaption { font-size: 11px; color: var(--muted); }
+.sparklines figure { margin: 0; }
+.split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+.split > div, .rows, .chart-scroll { min-width: 0; }
+.cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.stat { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+.stat .k { font-size: 11px; color: var(--muted); }
+.stat .v { font-size: 18px; font-variant-numeric: tabular-nums; }
+
+.rows { display: grid; gap: 2px; }
+.row { display: grid; grid-template-columns: 190px 1fr 96px 104px 56px auto; gap: 10px; align-items: center;
+  padding: 4px 6px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.row.clickable { cursor: pointer; }
+.row.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.row .name { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.row .num { text-align: right; font-size: 13px; white-space: nowrap; }
+.row .muted, .muted { color: var(--muted); }
+.row.unmapped .name { color: var(--muted); }
+.bar-cell { position: relative; height: 16px; }
+.bar-cell .zero { position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px solid var(--grid); }
+.bar-cell .fill { position: absolute; top: 3px; height: 10px; border-radius: 3px; }
+.bar-cell .fill.pos-bg { background: var(--up); }
+.bar-cell .fill.neg-bg { background: var(--down); }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border); color: var(--ink-2); }
+.delta.up { color: var(--up); } .delta.down { color: var(--down); }
+.pos { color: var(--up); } .neg { color: var(--down); }
+.small { font-size: 12px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; vertical-align: middle; }
+
+/* 목록 머리글 행. 값 행과 같은 격자를 쓰되 눌리지 않는다 */
+.row.head { color: var(--muted); font-size: 11px; padding-bottom: 2px; border-bottom: 1px solid var(--grid); }
+.row.head:hover { background: none; }
+.gauge { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--grid); }
+.gauge > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.stat.badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; border-style: dashed; }
+
+/* 종목 기여 행: 종목 · 막대 · 섹터 내 비중 · 수익률 · 기여 */
+#members .row { grid-template-columns: 1fr 120px 76px 72px 66px; }
+/* 특이사항 행: 날짜 · 유형 · 종목 · 섹터 · 섹터 대비 · 시총 · 내용 */
+#events .row { grid-template-columns: 116px 84px 150px 120px 72px 84px 1fr; }
+#events .date { text-align: left; font-size: 12px; color: var(--ink-2); }
+#events .detail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+
+.banner { margin: 0 16px; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  background: color-mix(in srgb, var(--warn) 22%, var(--surface)); border: 1px solid var(--border); }
+.banner.error { background: color-mix(in srgb, var(--up) 18%, var(--surface)); }
+.banner button { margin-left: 8px; }
+.skeleton { height: 460px; border-radius: 8px; background: linear-gradient(90deg, var(--grid), var(--surface), var(--grid));
+  background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.empty { padding: 40px 0; text-align: center; color: var(--muted); }
+
+.table-wrap { overflow-x: auto; max-height: 460px; }
+table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--grid); padding: 4px 8px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
+thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); }
+
+@media (max-width: 1280px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+  main { padding: 10px; }
+  .chart { height: 380px; min-width: 620px; }
+  .head-right { margin-left: 0; }
+  .row { grid-template-columns: minmax(0, 1fr) 92px 68px; }
+  #members .row { grid-template-columns: minmax(0, 1fr) 72px 60px 62px; }
+  .row .hide-narrow, #events .detail { display: none; }
+  #events .row { grid-template-columns: 88px 82px minmax(0, 1fr); }
+  .cards .stat { flex: 1 1 128px; }
+}

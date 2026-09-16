@@ -14,9 +14,13 @@ def connect(path: Path, *, readonly: bool = False, busy_timeout_ms: int = DEFAUL
 
     자동 커밋 모드로 열므로 여러 문장을 묶어 쓸 때는 transaction()을 쓴다.
     읽기 전용 연결(API용)은 파일이 없으면 실패하고, 쓰기 문장을 거부한다.
+
+    읽기 전용 연결은 스레드 검사를 끈다. FastAPI는 의존성과 엔드포인트를 스레드풀의 서로 다른
+    스레드에서 실행할 수 있는데, 연결은 요청 하나가 차례로 쓰고 닫으므로 동시 사용은 없다.
     """
     if readonly:
-        con = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True, autocommit=True)
+        con = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True, autocommit=True,
+                              check_same_thread=False)
     else:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         con = sqlite3.connect(path, autocommit=True)

@@ -102,6 +102,7 @@ def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
 
     if args.port:
         config = {**config, "api": {**config["api"], "port": args.port}}
+    config = {**config, "db": {**config["db"], "path": str(db_path(args, config))}}
     print(f"http://{config['api']['host']}:{config['api']['port']} (문서: /docs)")
     serve(config)
     return 0

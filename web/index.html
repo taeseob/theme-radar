@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>theme-radar — 섹터 순위 추이</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/echarts-6.1.0.min.js"></script>
+</head>
+<body>
+<header class="bar">
+  <h1>theme-radar</h1>
+  <div class="controls">
+    <label>시장 <select id="universe"></select></label>
+    <label>분류 <select id="scheme"></select></label>
+    <label>기간
+      <span class="segmented" id="period">
+        <button type="button" data-value="W">주</button><button type="button" data-value="M">월</button>
+      </span>
+    </label>
+    <label>구간 <select id="range">
+      <option value="13">최근 13기간</option>
+      <option value="26" selected>최근 26기간</option>
+      <option value="52">최근 52기간</option>
+      <option value="104">최근 104기간</option>
+    </select></label>
+    <label>표시 <select id="top">
+      <option value="0">전체</option>
+      <option value="5">상위 5</option>
+      <option value="10">상위 10</option>
+    </select></label>
+  </div>
+  <button type="button" id="theme-toggle" class="ghost" title="라이트/다크 전환">◐</button>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <section class="card" id="bump-card">
+    <div class="card-head">
+      <h2>섹터 순위 추이</h2>
+      <div class="head-right">
+        <span id="market-summary" class="summary"></span>
+        <span class="segmented" id="chart-mode">
+          <button type="button" data-value="rank">순위</button><button type="button" data-value="return">수익률</button>
+        </span>
+        <button type="button" id="table-toggle" class="ghost">표로 보기</button>
+      </div>
+    </div>
+    <div class="chart-scroll"><div id="bump" class="chart"></div></div>
+    <div id="bump-table" class="table-wrap" hidden></div>
+    <p class="hint" id="bump-hint">선을 클릭하면 아래에 섹터 상세가 열린다. 점선 구간은 아직 끝나지 않은 기간(잠정)이다.</p>
+  </section>
+
+  <section class="card" id="snapshot-card">
+    <div class="card-head">
+      <h2 id="snapshot-title">기간 스냅샷</h2>
+      <span class="muted small">0을 중심으로 좌(−)·우(+) 방향 막대</span>
+      <div class="head-right">
+        <label class="small">정렬 <select id="snapshot-sort">
+          <option value="return">수익률</option>
+          <option value="contribution">기여도</option>
+          <option value="weight">시총 비중</option>
+        </select></label>
+      </div>
+    </div>
+    <div id="snapshot" class="rows"></div>
+  </section>
+
+  <section class="card" id="drilldown-card" hidden>
+    <div class="card-head">
+      <h2 id="drilldown-title">섹터 상세</h2>
+      <button type="button" id="drilldown-close" class="ghost">닫기</button>
+    </div>
+    <div id="concentration" class="cards"></div>
+    <div class="split">
+      <div>
+        <h3>종목별 기여</h3>
+        <div id="members" class="rows"></div>
+      </div>
+      <div>
+        <h3>섹터 시계열</h3>
+        <div class="sparklines">
+          <figure><figcaption>수익률</figcaption><div id="spark-return" class="spark"></div></figure>
+          <figure><figcaption>순위</figcaption><div id="spark-rank" class="spark"></div></figure>
+          <figure><figcaption>상위1 기여 비중</figcaption><div id="spark-top1" class="spark"></div></figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="events-card">
+    <div class="card-head">
+      <h2>특이사항</h2>
+      <div class="head-right">
+        <label class="small">유형 <select id="event-type">
+          <option value="">전체</option>
+          <option value="SHARE_CHANGE">주식수 급변</option>
+          <option value="CORP_ACTION">기업행위</option>
+          <option value="LISTING">편입·상장</option>
+          <option value="DELISTING">편출·폐지</option>
+          <option value="DATA_GAP">데이터 공백</option>
+        </select></label>
+      </div>
+    </div>
+    <p class="hint">가격이 아닌 이유로 섹터 시총이 바뀐 사건이다. 섹터 시총 대비 규모가 큰 순서로 보여 준다.</p>
+    <div id="events" class="rows"></div>
+  </section>
+</main>
+
+<footer>
+  유니버스 수익률은 자체 산출값이며 KOSPI/KOSDAQ/S&amp;P 500 공식 지수와 다릅니다.
+  <span id="calc-info" class="muted"></span>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -110,7 +110,7 @@ Base URL: `/api/v1`
 
 - `color`는 차트 색상 고정을 위해 서버가 제공한다. 클라이언트가 순위 순으로 색을 배정하지 않는다.
 
-### 2.4 `GET /meta/periods?universe=&period=W&from=&to=`
+### 2.4 `GET /meta/periods?universe=&period=W&from=&to=&last=`
 
 ```json
 {
@@ -128,6 +128,8 @@ Base URL: `/api/v1`
   ]
 }
 ```
+
+- `last=N`은 `to`(기본 최신 기간)에서 거슬러 N기간을 준다. 화면의 "최근 N기간" 컨트롤이 범프 차트의 `from`/`to`를 정하는 데 쓴다. 상한은 §1.1과 같다.
 
 ## 3. 범프 차트 API (메인)
 

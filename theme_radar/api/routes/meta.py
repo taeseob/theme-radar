@@ -39,9 +39,15 @@ def groups(universe: str, scheme: str, lang: str = "ko", con: sqlite3.Connection
 
 @router.get("/meta/periods")
 def periods(universe: str, period: str = "W", from_: str | None = Query(None, alias="from"), to: str | None = None,
-            con: sqlite3.Connection = Depends(deps.get_con)) -> dict:
+            last: int = Query(0, ge=0), con: sqlite3.Connection = Depends(deps.get_con)) -> dict:
+    """`last`를 주면 `to`(기본 최신)에서 거슬러 N기간을 준다. 화면의 '최근 N기간' 컨트롤이 쓴다."""
     scope = deps.scope(con, universe, period)
     rng = deps.period_range(con, scope, from_, to)
+    if last:
+        if last > deps.MAX_PERIODS[scope.period_type]:
+            raise deps.ApiError(400, "RANGE_TOO_LARGE",
+                                f"{scope.period_type} 단위 조회 구간 상한은 {deps.MAX_PERIODS[scope.period_type]}기간이다", "last")
+        rng = deps.period_range(con, scope, None, rng.to_id, minimum=last)
     return {"data": [{"period_id": r["period_id"], "period_seq": r["period_seq"], "cal_start": r["cal_start"],
                       "cal_end": r["cal_end"], "base_date": r["base_date"], "end_date": r["end_date"],
                       "trading_days": r["trading_days"], "is_closed": bool(r["is_closed"])} for r in rng.rows]}

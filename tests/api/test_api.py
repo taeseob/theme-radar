@@ -1,11 +1,13 @@
 """docs/05 명세대로 응답하는지 확인한다. 데이터는 tests/factories.py의 작은 시장이다."""
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 
 from theme_radar.api.app import create_app
 from theme_radar.calc import aggregate
 from theme_radar.config import load_config
-from theme_radar.db import transaction
+from theme_radar.db import connect, transaction
 from theme_radar.jobs import run_job
 
 CLOSED, PROVISIONAL = "2025-W02", "2025-W03"
@@ -94,6 +96,8 @@ def test_breakdown_limit_splits_members_and_others(client):
 def test_history_and_csv_export(client):
     history = get(client, "/api/v1/sectors/WI620/history", universe="KR_COMMON", scheme="WI26").json()["data"]
     assert [p["period_id"] for p in history] == [CLOSED, PROVISIONAL] and history[-1]["is_provisional"] is True
+    assert get(client, "/api/v1/meta/periods", universe="KR_COMMON", last=1).json()["data"] == [
+        p for p in get(client, "/api/v1/meta/periods", universe="KR_COMMON").json()["data"] if p["period_id"] == PROVISIONAL]
 
     csv_response = get(client, "/api/v1/export/sectors.csv", universe="KR_COMMON", scheme="WI26")
     assert csv_response.headers["content-type"].startswith("text/csv")
@@ -135,6 +139,32 @@ def test_cache_headers(client, con):
                     "VALUES ('KR', '2025-01-02', 'MAPPING', '2025-01-20T00:00:00Z')")
     stale = client.get("/api/v1/sectors/ranks", params={"universe": "KR_COMMON", "scheme": "WI26"})
     assert stale.json()["meta"]["stale"] is True and stale.headers["cache-control"] == "no-store"
+
+
+def test_serve_uses_the_db_flag(monkeypatch, db_path):
+    """--db는 선언만 하고 쓰지 않으면 조용히 운영 DB를 연다."""
+    import argparse
+
+    from theme_radar import __main__
+
+    seen = {}
+    monkeypatch.setattr("theme_radar.api.app.serve", lambda config: seen.update(config["db"]))
+    args = argparse.Namespace(port=None, db=str(db_path))
+    __main__.cmd_serve(args, load_config())
+    assert seen["path"] == str(db_path)
+
+
+def test_read_connection_survives_a_thread_hop(con, db_path):
+    """FastAPI는 의존성과 엔드포인트를 스레드풀의 다른 스레드에서 돌릴 수 있다 (화면이 두 요청을 동시에 보낼 때)."""
+    reader = connect(db_path, readonly=True)
+    try:
+        result = []
+        thread = threading.Thread(target=lambda: result.append(reader.execute("SELECT COUNT(*) FROM market").fetchone()[0]))
+        thread.start()
+        thread.join()
+        assert result == [2]
+    finally:
+        reader.close()
 
 
 @pytest.mark.parametrize("path, params, status, code", [
