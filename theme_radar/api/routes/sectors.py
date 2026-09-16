@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import sqlite3
+from bisect import bisect_right
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -11,8 +12,8 @@ from fastapi.responses import PlainTextResponse
 
 from theme_radar.api import deps
 from theme_radar.api.models import (BreakdownData, BreakdownMember, BreakdownOthers, BreakdownResponse, BreakdownSummary,
-                                    HistoryPoint, HistoryResponse, Meta, RankPoint, RanksData, RanksPeriod, RanksResponse,
-                                    RankSeries, ReturnsResponse, SectorRow, r8, r10)
+                                    HistoryPoint, HistoryResponse, MarketCapPoint, MarketCapResponse, Meta, RankPoint,
+                                    RanksData, RanksPeriod, RanksResponse, RankSeries, ReturnsResponse, SectorRow, r8, r10)
 
 router = APIRouter(tags=["sectors"])
 UNMAPPED = "UNMAPPED"
@@ -224,6 +225,44 @@ def history(group_code: str, response: Response, universe: str, scheme: str, per
     meta = Meta(**deps.envelope(scope, info, stale, **{"from": rng.from_id, "to": rng.to_id, "group_code": group_code,
                                                        "name": group_label(names, group_code, lang)}))
     return HistoryResponse(meta=meta, data=data)
+
+
+@router.get("/sectors/{group_code}/market-cap", response_model=MarketCapResponse)
+def market_cap(group_code: str, response: Response, universe: str, scheme: str, period: str = "W",
+               from_: str | None = Query(None, alias="from"), to: str | None = None, lang: str = "ko",
+               con: sqlite3.Connection = Depends(deps.get_con)) -> MarketCapResponse:
+    """섹터 시가총액의 기간별 시가·고가·저가·종가 (docs/05 §5.3). 일별 값에서 만든다 (docs/03 §14.2)."""
+    scope, rng, info, stale = _prepare(con, universe, scheme, period, from_, to)
+    daily = con.execute(
+        "SELECT trade_date, market_cap, member_cnt FROM group_daily_cap WHERE universe_code = ? AND scheme_code = ? "
+        "AND group_code = ? AND trade_date BETWEEN ? AND ? ORDER BY trade_date",
+        (scope.universe, scope.scheme, group_code, rng.rows[0]["base_date"], rng.end_date)).fetchall()
+    if not daily:
+        if con.execute("SELECT 1 FROM group_daily_cap WHERE universe_code = ? AND scheme_code = ? LIMIT 1",
+                       (scope.universe, scope.scheme)).fetchone() is None:
+            raise deps.ApiError(409, "NOT_AVAILABLE", f"{scope.universe} {scope.scheme} 섹터 일별 시총이 아직 없다")
+        raise deps.ApiError(404, "NOT_FOUND", f"{group_code} 그룹의 시가총액 데이터가 없다", "group_code")
+    deps.apply_cache(response, info, stale)
+
+    dates = [row["trade_date"] for row in daily]
+    by_date = dict(zip(dates, daily))
+    data = []
+    for p in rng.rows:
+        # 기간의 날은 기준일 다음 거래일부터 종료일까지다. 시가는 기준일(직전 기간 종료일) 값이고,
+        # 기준일에 그룹이 없었으면 기간 첫날 값이다
+        days = daily[bisect_right(dates, p["base_date"]):bisect_right(dates, p["end_date"])]
+        if not days:
+            continue
+        base = by_date.get(p["base_date"])
+        open_ = base["market_cap"] if base else days[0]["market_cap"]
+        caps = [open_, *(row["market_cap"] for row in days)]
+        data.append(MarketCapPoint(period_id=p["period_id"], base_date=p["base_date"], end_date=p["end_date"],
+                                   is_provisional=not p["is_closed"], open=round(open_), high=round(max(caps)),
+                                   low=round(min(caps)), close=round(days[-1]["market_cap"]), member_cnt=days[-1]["member_cnt"]))
+    names = deps.group_names(con, scope.scheme)
+    meta = Meta(**deps.envelope(scope, info, stale, **{"from": rng.from_id, "to": rng.to_id, "group_code": group_code,
+                                                       "name": group_label(names, group_code, lang)}))
+    return MarketCapResponse(meta=meta, data=data)
 
 
 @router.get("/export/sectors.csv", response_class=PlainTextResponse)

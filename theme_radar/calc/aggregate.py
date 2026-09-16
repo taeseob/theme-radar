@@ -7,6 +7,8 @@ from __future__ import annotations
 import sqlite3
 import time
 from dataclasses import dataclass
+from datetime import date, timedelta
+from math import fsum
 
 from theme_radar.calc import CALC_VERSION, engine, periods
 from theme_radar.calc import validate as calc_validate
@@ -171,6 +173,60 @@ def write_period(con: sqlite3.Connection, universe: str, scheme: Scheme, period:
     return rows + len(group_rows) + len(member_rows)
 
 
+FIRST_DATE = "0000-01-01"
+
+
+def daily_cap_start(con: sqlite3.Connection, universe: str, scheme: str, targets: list[Period], full: bool) -> str:
+    """섹터 일별 시총을 다시 쓸 첫 날짜.
+
+    시총의 원천(무수정 종가·주식수)은 적재 후 바뀌지 않는다. 그래서 아직 쓰지 않은 날짜와, 이번에 다시 계산하는
+    기간(잠정 기간·재계산 요청 구간)의 날짜만 쓴다.
+    """
+    last = con.execute("SELECT MAX(trade_date) FROM group_daily_cap WHERE universe_code = ? AND scheme_code = ?",
+                       (universe, scheme)).fetchone()[0]
+    if full or last is None:
+        return FIRST_DATE
+    after_last = (date.fromisoformat(last) + timedelta(days=1)).isoformat()
+    return min([after_last, *(p.cal_start for p in targets)])
+
+
+def _intervals(rows) -> dict[int, list[tuple]]:
+    out: dict[int, list[tuple]] = {}
+    for security_id, *rest in rows:
+        out.setdefault(security_id, []).append(tuple(rest))
+    return out
+
+
+def write_daily_caps(con: sqlite3.Connection, market: str, universe: str, scheme: str, start: str) -> int:
+    """거래일마다 그날의 유니버스 구성원과 분류 매핑으로 그룹 시가총액을 더한다 (docs/03 §14).
+
+    그날 시총이 없는 종목은 더하지 않는다. 보정하지 않고, 가격 외 이유의 변화는 특이사항으로 따로 본다.
+    호출하는 쪽이 트랜잭션을 연다.
+    """
+    con.execute("DELETE FROM group_daily_cap WHERE universe_code = ? AND scheme_code = ? AND trade_date >= ?",
+                (universe, scheme, start))
+    days = [d for (d,) in con.execute("SELECT trade_date FROM trading_calendar WHERE market_code = ? AND trade_date >= ? "
+                                      "ORDER BY trade_date", (market, start))]
+    membership = _intervals(con.execute("SELECT security_id, valid_from, valid_to FROM universe_membership "
+                                        "WHERE universe_code = ?", (universe,)))
+    mapping = _intervals(con.execute("SELECT security_id, group_code, valid_from, valid_to FROM security_group_map "
+                                     "WHERE scheme_code = ?", (scheme,)))
+    rows = []
+    for day in days:
+        caps: dict[str, list[float]] = {}
+        for security_id, market_cap in con.execute(
+                "SELECT security_id, market_cap FROM price_daily WHERE trade_date = ? AND market_cap IS NOT NULL", (day,)):
+            if not any(valid_from <= day <= valid_to for valid_from, valid_to in membership.get(security_id, ())):
+                continue
+            codes = [code for code, valid_from, valid_to in mapping.get(security_id, ()) if valid_from <= day <= valid_to]
+            for code in codes or [engine.UNMAPPED]:
+                caps.setdefault(code, []).append(market_cap)
+        rows.extend((universe, scheme, code, day, fsum(values), len(values)) for code, values in sorted(caps.items()))
+    con.executemany("INSERT INTO group_daily_cap (universe_code, scheme_code, group_code, trade_date, market_cap, member_cnt) "
+                    "VALUES (?, ?, ?, ?, ?, ?)", rows)
+    return len(rows)
+
+
 def target_periods(con: sqlite3.Connection, market: str, universe: str, period_type: str, full: bool,
                    recalc_from: str | None) -> list[Period]:
     """다시 계산할 기간: 전 구간 모드면 전부, 아니면 아직 계산하지 않았거나 잠정치이거나 재계산 요청 구간."""
@@ -203,8 +259,10 @@ def run(con: sqlite3.Connection, run_state: Run, market: str, today: str, full: 
 
     blocked_periods = []
     for universe in universes(con, market):
+        targets: list[Period] = []
         for period_type in ("W", "M"):
             todo = target_periods(con, market, universe, period_type, full, recalc_from)
+            targets.extend(todo)
             for period in todo:
                 members = load_members(con, universe, period)
                 violations: list[calc_validate.Violation] = []
@@ -222,6 +280,14 @@ def run(con: sqlite3.Connection, run_state: Run, market: str, today: str, full: 
                     run_state.check(v.rule_code, f"{universe}/{period_type}/{period.period_id}", v.severity,
                                     passed=False, observed=v.observed, tolerance=v.tolerance, detail=v.detail)
             log(f"{universe}/{period_type}: {len(todo)}개 기간 계산 ({time.monotonic() - started:.1f}s)")
+
+        for scheme in scheme_list:
+            start = daily_cap_start(con, universe, scheme.scheme_code, targets, full)
+            with transaction(con):
+                count = write_daily_caps(con, market, universe, scheme.scheme_code, start)
+            run_state.row_count += count
+            log(f"{universe}/{scheme.scheme_code}: 섹터 일별 시총 {count}행 "
+                f"({'전 기간' if start == FIRST_DATE else f'{start} 이후'}, {time.monotonic() - started:.1f}s)")
 
     if request_ids and not blocked_periods:
         with transaction(con):

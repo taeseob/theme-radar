@@ -305,6 +305,30 @@ Base URL: `/api/v1`
 }
 ```
 
+### 5.3 `GET /sectors/{group_code}/market-cap`
+
+섹터 시가총액의 기간별 시가·고가·저가·종가(드릴다운 시가총액 차트용). 계산 정의는 [03 §14.2](03-metrics-spec.md#142-기간-값)다.
+
+**파라미터**: 공통(`from`, `to` 포함)
+
+```json
+{
+  "meta": { "universe": "KR_COMMON", "scheme": "WI26", "period": "W", "currency": "KRW",
+            "from": "2026-W35", "to": "2026-W38", "group_code": "WI620", "name": "반도체" },
+  "data": [
+    { "period_id": "2026-W36", "base_date": "2026-08-28", "end_date": "2026-09-04", "is_provisional": false,
+      "open": 2987521533408255, "high": 3042975057022089, "low": 2893185252173515, "close": 2977591039595888,
+      "member_cnt": 163 }
+  ]
+}
+```
+
+- 시가총액은 `meta.currency` 단위이고 정수로 반올림한다.
+- `open`은 기준일(직전 기간 종료일) 값이다. 그래서 한 기간의 `open`은 앞 기간의 `close`와 같다.
+- `member_cnt`는 기간 마지막 거래일에 더한 종목 수다.
+- 그룹이 없는 기간은 점을 생략한다. 이동평균은 주지 않는다. 화면이 `close`로 계산하고, 필요한 앞 기간은 `from`을 앞당겨 받는다([06 §5.4](06-ui-spec.md#54-섹터-시가총액-차트)).
+- 섹터 일별 시총을 아직 한 번도 쓰지 않았으면 409 `NOT_AVAILABLE`, 그 그룹의 값이 없으면 404 `NOT_FOUND`다.
+
 ## 6. 부가 API
 
 ### 6.1 `GET /securities/search?universe=&q=&limit=20`
@@ -369,6 +393,7 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 | `/sectors/ranks`, `/sectors/returns` | 구간이 확정 기간만 포함 | `max-age=86400` |
 | 〃 | 구간에 잠정 기간 포함 | `max-age=300` |
 | `/sectors/{g}/breakdown` | 확정 기간 | `max-age=86400` |
+| `/sectors/{g}/history`, `/sectors/{g}/market-cap` | `/sectors/ranks`와 같다 | 〃 |
 | 전체 | `stale = true` | `no-store` |
 
 `ETag`는 `calc_version` + 구간 내 최대 `calculated_at`으로 생성한다.

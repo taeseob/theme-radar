@@ -54,6 +54,46 @@ def test_group_stats_and_rank_delta(con, market):
     assert universe[0] == pytest.approx(sum(r[2] for r in rows.values()), abs=1e-12)   # V-3: 기여도 합 = 시장 수익률
 
 
+def daily_caps(con, group_code):
+    return {r[0]: (r[1], r[2]) for r in con.execute(
+        "SELECT trade_date, market_cap, member_cnt FROM group_daily_cap WHERE universe_code = 'KR_COMMON' "
+        "AND scheme_code = 'WI26' AND group_code = ? ORDER BY trade_date", (group_code,))}
+
+
+def test_daily_caps_follow_membership_on_each_day(con, market):
+    aggregate_all(con)
+    semis = daily_caps(con, "WI620")
+    assert len(semis) == 12                                        # 첫 기간의 거래일도 쓴다
+    assert semis["2025-01-07"] == (1.03e9 + 2e8, 2)                # A + C (D는 시총이 없어 빠진다)
+    assert semis["2025-01-08"] == (1.04e9, 1)                      # C는 01-07이 마지막 거래일이다
+    banks = daily_caps(con, "WI500")
+    assert banks["2025-01-07"] == (7e7, 1) and banks["2025-01-08"] == (5e7 + 7e7, 2)   # B 상장
+    assert banks["2025-01-14"] == (5e7, 1)                         # E 거래정지로 행이 없다. 보정하지 않는다
+    total = con.execute("SELECT SUM(market_cap) FROM price_daily WHERE trade_date = '2025-01-08'").fetchone()[0]
+    assert semis["2025-01-08"][0] + banks["2025-01-08"][0] == total
+
+
+def test_daily_caps_are_refilled_and_follow_mapping_changes(con, market):
+    aggregate_all(con)
+    with transaction(con):
+        con.execute("DELETE FROM group_daily_cap")                 # 마이그레이션 직후처럼 비어 있다
+        con.execute("UPDATE security_group_map SET group_code = 'WI620' WHERE security_id = ?", (market["B"],))
+        con.execute("INSERT INTO recalc_request (market_code, from_date, reason, requested_at) "
+                    "VALUES ('KR', '2025-01-13', 'MAPPING', ?)", (NOW,))
+    aggregate_all(con, full=False)
+    assert daily_caps(con, "WI620")["2025-01-14"] == (1.08e9 + 5e7, 2)
+    assert daily_caps(con, "WI500")["2025-01-02"] == (7e7, 1)
+
+
+def test_daily_cap_start_covers_unwritten_days_and_recomputed_periods(con, market):
+    aggregate_all(con)
+    week3 = next(p for p in aggregate.periods.load(con, "KR", "W") if p.period_id == "2025-W03")
+    assert aggregate.daily_cap_start(con, "KR_COMMON", "WI26", [], full=False) == "2025-01-18"   # 마지막으로 쓴 날 다음
+    assert aggregate.daily_cap_start(con, "KR_COMMON", "WI26", [week3], full=False) == "2025-01-13"
+    assert aggregate.daily_cap_start(con, "KR_COMMON", "WI26", [week3], full=True) == aggregate.FIRST_DATE
+    assert aggregate.daily_cap_start(con, "US_SP500", "GICS", [], full=False) == aggregate.FIRST_DATE
+
+
 def test_provisional_period_is_marked_and_recomputed(con, market):
     aggregate_all(con, today="2025-01-16")           # 2025-W03이 아직 진행 중
     row = con.execute("SELECT is_provisional, ret FROM universe_period_stat WHERE period_id = '2025-W03'").fetchone()

@@ -21,15 +21,27 @@ export function ratio(value, digits = 0) {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+/** 천 단위 구분 기호를 넣은 수. 섹터 시총은 1,000조원·$1,000B를 넘는다 @param {number} value @param {number} digits */
+function grouped(value, digits) {
+  return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
 /** @param {number|null|undefined} value @param {string} currency */
 export function cap(value, currency) {
   if (value === null || value === undefined) return "—";
   if (currency === "KRW") {
-    if (Math.abs(value) >= 1e12) return `${(value / 1e12).toFixed(1)}조원`;
-    return `${Math.round(value / 1e8).toLocaleString()}억원`;
+    if (Math.abs(value) >= 1e12) return `${grouped(value / 1e12, 1)}조원`;
+    return `${grouped(value / 1e8, 0)}억원`;
   }
-  if (Math.abs(value) >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
-  return `$${(value / 1e6).toFixed(0)}M`;
+  if (Math.abs(value) >= 1e9) return `$${grouped(value / 1e9, 1)}B`;
+  return `$${grouped(value / 1e6, 0)}M`;
+}
+
+/** 축 눈금용 시총. 단위 글자를 줄이고 끝자리 0을 뺀다 (600조, $1,250B) */
+export function capTick(value, currency) {
+  const short = (v) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (currency === "KRW") return Math.abs(value) >= 1e12 ? `${short(value / 1e12)}조` : `${short(value / 1e8)}억`;
+  return Math.abs(value) >= 1e9 ? `$${short(value / 1e9)}B` : `$${short(value / 1e6)}M`;
 }
 
 /** 순위 변동 화살표. 색만으로 구분하지 않도록 기호를 함께 쓴다 (docs/06 §8) */

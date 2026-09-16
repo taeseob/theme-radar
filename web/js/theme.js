@@ -21,8 +21,9 @@ export function seriesColor(color) {
   return isDark() ? (DARK[color.toLowerCase()] || color) : color;
 }
 
+/** 색 토큰. 시장별 상승·하락 색은 body[data-market]에서 덮어쓰므로 body에서 읽는다 (app.css) */
 export function token(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return getComputedStyle(document.body).getPropertyValue(name).trim();
 }
 
 export function init(onToggle) {

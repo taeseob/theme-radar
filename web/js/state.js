@@ -1,7 +1,7 @@
 // @ts-check
 /** 화면 상태는 URL 쿼리스트링이 단일 출처다 (docs/06 §2). */
 
-const DEFAULTS = {
+export const DEFAULTS = {
   universe: "KR_COMMON",
   scheme: "",          // 비어 있으면 시장의 첫 스킴
   period: "W",
@@ -11,6 +11,9 @@ const DEFAULTS = {
   view: "chart",       // chart | table — 표 대체 표현 (docs/06 §8)
   group: "",           // 드릴다운으로 연 섹터
   pid: "",             // 선택한 기간 (비어 있으면 최신)
+  cap: "line",         // line | candle — 섹터 시가총액 차트 모양 (docs/06 §5.4)
+  ma: "",              // "1"이면 이동평균선을 그린다
+  ma_n: "5",           // 이동평균 기간 수
   event_type: "",
 };
 

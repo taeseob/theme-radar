@@ -70,6 +70,15 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
   background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 6px;
   font-size: 12px; line-height: 1.55; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); }
 .spark { height: 64px; }
+/* 드릴다운의 섹터 시가총액 차트 (docs/06 §5.4). 높이에 x축 라벨 두 줄 자리까지 넣는다 */
+.cap-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.sub-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.sub-head h3 { margin: 0; }
+.cap-chart { height: 300px; position: relative; }
+input[type="number"] { font: inherit; font-size: 13px; width: 56px; padding: 3px 6px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+input[type="number"]:disabled { color: var(--muted); }
+input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .sparklines { display: grid; gap: 8px; }
 .sparklines figcaption { font-size: 11px; color: var(--muted); }
 .sparklines figure { margin: 0; }
@@ -158,6 +167,7 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
   main { padding: 10px; }
   .chart-scroll { height: 380px; }
   .chart { min-width: 620px; }
+  .cap-chart { height: 260px; }
   .head-right { margin-left: 0; }
   #snapshot .row { grid-template-columns: minmax(0, 1fr) 92px 68px; }
   #members .row { grid-template-columns: minmax(0, 1fr) 72px 60px 62px; }

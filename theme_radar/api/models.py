@@ -193,6 +193,24 @@ class HistoryResponse(Model):
     data: list[HistoryPoint]
 
 
+class MarketCapPoint(Model):
+    """시가총액은 시장 통화 단위이고 정수로 반올림한다."""
+    period_id: str
+    base_date: str
+    end_date: str
+    is_provisional: bool
+    open: float
+    high: float
+    low: float
+    close: float
+    member_cnt: int
+
+
+class MarketCapResponse(Model):
+    meta: Meta
+    data: list[MarketCapPoint]
+
+
 class SecurityHit(Model):
     security_id: int
     ticker: str

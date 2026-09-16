@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | **마스터** | 외부/자체 공급, 저빈도 변경, 이력 관리 | `market`, `universe`, `security`, `universe_membership`, `classification_scheme`, `classification_group`, `security_group_map` |
 | **원천 시계열** | 일 단위 적재 | `trading_calendar`, `price_daily`, `shares_observation`, `corporate_action`, `special_event` |
-| **파생(집계)** | 배치로 산출, 재계산 가능 | `period_calendar`, `security_period_return`, `universe_period_stat`, `group_period_stat`, `group_member_contribution` |
+| **파생(집계)** | 배치로 산출, 재계산 가능 | `period_calendar`, `security_period_return`, `universe_period_stat`, `group_period_stat`, `group_member_contribution`, `group_daily_cap` |
 | **운영** | 실행 기록, 검증 결과, 재계산 요청 | `batch_run`, `validation_result`, `restatement_log`, `recalc_request` |
 
 파생 레이어는 **언제든 원천으로부터 전량 재생성 가능**해야 한다. 파생 테이블에 수기 보정값을 넣지 않는다.
@@ -55,6 +55,8 @@ erDiagram
     period_calendar ||--o{ universe_period_stat : scopes
     period_calendar ||--o{ group_period_stat : scopes
     group_period_stat ||--o{ group_member_contribution : decomposes
+    classification_group ||--o{ group_daily_cap : sums
+    trading_calendar ||--o{ group_daily_cap : dates
 
     batch_run ||--o{ validation_result : checks
     batch_run ||--o{ restatement_log : logs
@@ -205,6 +207,16 @@ AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 - 행 수는 배타 스킴 기준 `security_period_return`의 포함 종목 수와 같다(연 약 18.6만 행, [04 §6.1](04-pipeline.md#61-데이터-규모-추정)).
 - 드릴다운의 "기타 N종목" 합산은 API가 조회 시 반환하지 않은 종목을 더해 만든다([05 §5.1](05-api-spec.md#51-get-sectorsgroup_codebreakdown)).
 
+### 5.6 group_daily_cap
+
+키: `(universe_code, scheme_code, group_code, trade_date)`
+
+드릴다운의 섹터 시가총액 차트 전용([06 §5.4](06-ui-spec.md#54-섹터-시가총액-차트)). 거래일마다 그날의 유니버스 구성원과 분류 매핑으로 더한 그룹 시가총액과 더한 종목 수다. 정의는 [03 §14](03-metrics-spec.md#14-섹터-시가총액)에 있다.
+
+- 일별 값만 저장한다. 기간 단위 시가·고가·저가·종가는 API가 조회할 때 만들고([05 §5.3](05-api-spec.md#53-get-sectorsgroup_codemarket-cap)), 이동평균은 화면이 계산한다([§9](#9-결정-기록) S-17).
+- 미매핑 종목은 `UNMAPPED` 행으로 더한다. 배타 스킴에서 한 날짜의 그룹 합은 그날 유니버스 시총과 같다.
+- 행 수는 (그룹 수 + 1) × 거래일 수다. 2025-01 이후 KR 11,205행 · US 5,080행이다.
+
 ## 6. 입력 데이터 규격
 
 ### 6.1 분류 매핑 파일 (security_group_map 적재)
@@ -302,4 +314,5 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
 | S-13 | GICS 섹터 표시명 | 영문명을 쓰고 한국어 이름은 두지 않는다. 섹터 색상은 개발 측에서 정한다 | 사용자 결정 (2026-09-15) |
 | S-14 | 분류 매핑 이력 | 현재 스냅샷 하나를 전 기간에 적용한다. 과거 이력은 만들지 않는다. 다시 적재하면 스킴의 매핑을 통째로 바꾸고 재계산을 요청한다 | 매핑이 실제로 바뀔 때 이력 처리를 정한다 |
 | S-16 | 미매핑 순위 | `UNMAPPED`는 순위를 받지 않는다(`rank_ret` NULL 허용, 마이그레이션 0002) | 분류 체계의 섹터가 아니다. 기여도 가산성을 위해 행은 남긴다 |
+| S-17 | 섹터 시가총액 저장 (2026-09-16) | 일별 그룹 시총만 `group_daily_cap`에 저장한다. 기간 캔들 값은 API가 만들고, 이동평균은 저장하지 않고 화면이 계산한다 | 요청 때마다 종목 시세를 더하면 104주 구간에서 KR 2,500종목 × 520거래일을 읽는다. 기간 값은 일별 값의 처음·끝·최소·최대라 조회 때 만들어도 싸다. 이동평균은 사용자가 기간을 고르므로 저장할 값이 정해지지 않는다(사용자 결정) |
 | S-15 | 섹터 색상 | 8색 범주형 팔레트를 산업 계열 단위로 배정한다 (`data/group_colors.csv`) | 검증된 8색을 넘는 색을 만들면 색각 이상에서 구분되지 않는다. 섹터 식별은 라벨과 호버가 맡는다 |

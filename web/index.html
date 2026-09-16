@@ -87,6 +87,21 @@
         </div>
       </div>
     </div>
+    <div class="cap-block">
+      <div class="sub-head">
+        <h3>섹터 시가총액</h3>
+        <div class="head-right">
+          <span class="segmented" id="cap-kind" aria-label="차트 모양">
+            <button type="button" data-value="line">선</button><button type="button" data-value="candle">캔들</button>
+          </span>
+          <label class="small"><input type="checkbox" id="ma-show"> 이동평균</label>
+          <label class="small"><input type="number" id="ma-len" min="2" max="52" step="1" inputmode="numeric"> 기간</label>
+        </div>
+      </div>
+      <div id="cap-chart" class="cap-chart" role="img" aria-label="섹터 시가총액 추이"></div>
+      <p class="hint">선은 기간 말 시가총액을 잇고, 캔들은 일별 시가총액으로 그린다(시가는 직전 기간 말 값).
+        이동평균은 기간 말 값의 단순 평균이다. 시가총액은 상장·폐지 같은 가격 외 이유로도 바뀐다(아래 특이사항).</p>
+    </div>
   </section>
 
   <section class="card" id="events-card">

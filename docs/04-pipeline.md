@@ -67,6 +67,7 @@
 10. `calc_version`, `calculated_at` 기록 후 커밋
 
 - 4~8단계는 `(universe, scheme, period_type)` 조합별로 병렬 실행 가능하다.
+- 기간 계산이 끝나면 유니버스·스킴마다 섹터 일별 시총([03 §14.1](03-metrics-spec.md#141-일별-값))을 `group_daily_cap`에 쓴다. 시총 원천(무수정 종가·주식수)은 적재 후 바뀌지 않으므로, **아직 쓰지 않은 날짜와 이번에 다시 계산한 기간(잠정 기간·재계산 요청 구간)의 날짜만** 다시 쓴다. `--full`이면 전부 쓴다. 검증 규칙은 두지 않는다.
 - 7단계의 `rank_delta`는 직전 기간 결과에 의존하므로 **기간 순서대로** 처리한다.
 
 ## 4. 재계산 정책
@@ -128,6 +129,7 @@
 | `security_period_return` | 2,900 × (52주 + 12월) ≈ 18.6만 행/년 |
 | `group_period_stat` | (26 + 11 + 테마) × 64 기간 ≈ 수천 행/년 |
 | `group_member_contribution` | 포함 종목 전체. 배타 스킴 기준 `security_period_return`과 같은 ≈ 18.6만 행/년 |
+| `group_daily_cap` | (26 + 11 + 미매핑 2) × 250 거래일 ≈ 1만 행/년 |
 
 `group_period_stat`은 매우 작다. **범프 차트 조회는 수백 행 단위**이므로 단일 인덱스 스캔으로 해결된다.
 
@@ -135,6 +137,7 @@
 
 - 범프 차트: `ix_gps_series (universe_code, scheme_code, period_type, period_seq)` 범위 스캔
 - 드릴다운: `group_member_contribution` PK 선두 컬럼 일치 조회
+- 섹터 시가총액: `group_daily_cap` PK `(universe_code, scheme_code, group_code, trade_date)` 범위 스캔. 기간 값은 읽은 일별 행을 기간별로 묶어 만든다
 - 캐시: 서버 측 응답 캐시는 두지 않는다. 조회 대상이 수천 행 이하라 DB 조회로 충분하다. 브라우저 캐시는 [05 §7](05-api-spec.md#7-캐싱)의 `Cache-Control`·`ETag` 헤더로 제어한다(확정 기간만 포함 24시간, 잠정 기간 포함 5분).
 
 ### 6.3 목표

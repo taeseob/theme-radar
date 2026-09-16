@@ -52,7 +52,7 @@ python -m venv .venv
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS
 .venv\Scripts\python -m theme_radar prices backfill --market KR   # 약 1시간
 .venv\Scripts\python -m theme_radar prices backfill --market US
-.venv\Scripts\python -m theme_radar aggregate --market KR --full   # 파생 지표 산출 (약 10초)
+.venv\Scripts\python -m theme_radar aggregate --market KR --full   # 파생 지표 산출 (약 20초)
 .venv\Scripts\python -m theme_radar aggregate --market US --full
 ```
 

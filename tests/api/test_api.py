@@ -107,6 +107,30 @@ def test_history_and_csv_export(client):
     assert len(lines) == 5                                   # 2기간 × 2그룹
 
 
+def test_market_cap_candles_from_daily_caps(client):
+    body = get(client, "/api/v1/sectors/WI620/market-cap", universe="KR_COMMON", scheme="WI26").json()
+    assert body["meta"]["group_code"] == "WI620" and body["meta"]["name"] == "반도체" and body["meta"]["currency"] == "KRW"
+    closed, provisional = body["data"]
+    # 2025-W02: 시가는 기준일 2025-01-03 값(A 101 × 1천만 + C 200 × 1백만). C가 01-07까지 거래하고 폐지돼 저가가 기간 중에 나온다
+    assert closed == {"period_id": CLOSED, "base_date": "2025-01-03", "end_date": "2025-01-10", "is_provisional": False,
+                      "open": 1.21e9, "high": 1.23e9, "low": 1.04e9, "close": 1.06e9, "member_cnt": 1}
+    # 2025-W03: 줄곧 오른 주라 시가가 저가, 종가가 고가다
+    assert (provisional["open"], provisional["high"], provisional["low"], provisional["close"]) == (1.06e9, 1.11e9, 1.06e9, 1.11e9)
+    assert provisional["is_provisional"] is True
+
+    banks = get(client, "/api/v1/sectors/WI500/market-cap", universe="KR_COMMON", scheme="WI26", period="W",
+                **{"from": PROVISIONAL}).json()["data"]
+    # 기준일 B 5천만 + E 7천만, 01-14부터 E 거래정지로 행이 없어 B만 남는다
+    assert [(p["open"], p["high"], p["low"], p["close"], p["member_cnt"]) for p in banks] == [(1.2e8, 1.2e8, 5e7, 5e7, 1)]
+
+
+def test_market_cap_before_daily_caps_are_written(client, con):
+    with transaction(con):
+        con.execute("DELETE FROM group_daily_cap")
+    response = client.get("/api/v1/sectors/WI620/market-cap", params={"universe": "KR_COMMON", "scheme": "WI26"})
+    assert response.status_code == 409 and response.json()["error"]["code"] == "NOT_AVAILABLE"
+
+
 def test_securities_search(client):
     hits = get(client, "/api/v1/securities/search", universe="KR_COMMON", q="에이").json()["data"]
     assert [h["ticker"] for h in hits] == ["000001"] and hits[0]["group_code"] == "WI620"
@@ -186,6 +210,7 @@ def test_read_connection_survives_a_thread_hop(con, db_path):
     ("/api/v1/sectors/ranks", {"universe": "KR_COMMON", "scheme": "WI26", "from": "2026-W60"}, 400, "INVALID_PERIOD_ID"),
     ("/api/v1/sectors/ranks", {"universe": "KR_COMMON", "scheme": "WI26", "rank_by": "nope"}, 400, "INVALID_PARAMETER"),
     ("/api/v1/sectors/NOPE/breakdown", {"universe": "KR_COMMON", "scheme": "WI26"}, 404, "NOT_FOUND"),
+    ("/api/v1/sectors/NOPE/market-cap", {"universe": "KR_COMMON", "scheme": "WI26"}, 404, "NOT_FOUND"),
     ("/api/v1/sectors/returns", {"universe": "US_SP500", "scheme": "GICS"}, 409, "NOT_AVAILABLE"),
 ])
 def test_error_responses(client, path, params, status, code):

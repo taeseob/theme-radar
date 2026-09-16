@@ -2,6 +2,7 @@
 /** 화면 조립 (docs/06). 상태는 URL이 단일 출처이고, 상태가 바뀔 때마다 필요한 부분만 다시 그린다. */
 import { ApiError, get } from "./api.js";
 import * as bump from "./bump-chart.js";
+import * as capChart from "./cap-chart.js";
 import * as drilldown from "./drilldown.js";
 import * as events from "./events.js";
 import { escapeHtml } from "./format.js";
@@ -13,6 +14,7 @@ const NARROW = 768;                 // 이 아래에서는 표시 섹터 수를 
 const MAX_PERIODS = { W: 260, M: 120 };
 const HEIGHT_KEY = "theme-radar-bump-height";
 const MIN_HEIGHT = 240;             // app.css의 .chart-scroll min-height와 같다
+const MA_RANGE = [2, 52];           // 이동평균 기간 수로 고를 수 있는 범위 (docs/06 §5.4)
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 const sel = (id) => /** @type {HTMLSelectElement} */ (document.getElementById(id));
 
@@ -123,6 +125,38 @@ async function drawDrilldown(current, periodId) {
   drilldown.renderConcentration($("concentration"), breakdown.data.summary);
   drilldown.renderMembers($("members"), breakdown);
   drilldown.renderSparklines(history);
+  await drawMarketCap(current, periodId);
+}
+
+/** @param {string} value */
+function maLength(value) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.min(MA_RANGE[1], Math.max(MA_RANGE[0], n)) : Number(state.DEFAULTS.ma_n);
+}
+
+/**
+ * 섹터 시가총액 차트 (docs/06 §5.4). 이동평균은 화면이 계산하므로, 첫 기간부터 값이 있도록
+ * 조회 구간 앞의 (기간 수 − 1)기간을 더 받는다. 데이터가 없으면 이 차트만 안내 문구로 바꾼다.
+ */
+async function drawMarketCap(current, periodId) {
+  const container = $("cap-chart");
+  const visible = cache.calendar.rows.length;
+  const length = current.ma ? maLength(current.ma_n) : 0;
+  const base = { universe: current.universe, period: current.period };
+  try {
+    const periods = length > 1
+      ? (await get("/meta/periods", { ...base, to: cache.calendar.to,
+                                      last: Math.min(visible + length - 1, MAX_PERIODS[current.period] || 260) })).data
+      : cache.calendar.rows;
+    const payload = await get(`/sectors/${encodeURIComponent(current.group)}/market-cap`, {
+      ...base, scheme: current.scheme, from: periods[0].period_id, to: cache.calendar.to });
+    capChart.render(container, payload, { periods, visible, kind: current.cap, maLength: length, selected: periodId,
+                                          color: cache.groups.get(current.group)?.color });
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    const text = error.status === 409 ? "섹터 시가총액이 아직 계산되지 않았습니다." : "섹터 시가총액을 불러오지 못했습니다.";
+    capChart.message(container, `<p class="empty">${escapeHtml(text)}<br><span class="muted">${escapeHtml(error.message)}</span></p>`);
+  }
 }
 
 async function drawEvents(current) {
@@ -261,6 +295,13 @@ function bind() {
   sel("snapshot-sort").addEventListener("change", () => refresh(true));
   sel("event-type").addEventListener("change", () => state.update({ event_type: sel("event-type").value }));
   $("drilldown-close").addEventListener("click", () => state.update({ group: "" }));
+  $("ma-show").addEventListener("change", (e) =>
+    state.update({ ma: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
+  $("ma-len").addEventListener("change", (e) => {
+    const input = /** @type {HTMLInputElement} */ (e.target);
+    input.value = String(maLength(input.value));
+    state.update({ ma_n: input.value });
+  });
   $("table-toggle").addEventListener("click", () =>
     state.update({ view: state.read().view === "table" ? "chart" : "table" }));
   $("snapshot").addEventListener("click", (e) => {
@@ -280,12 +321,21 @@ function bind() {
     pick(/** @type {HTMLElement} */ (row).dataset.group);
   });
   bindChartHeight();
-  window.addEventListener("resize", () => drilldown.resize());
+  window.addEventListener("resize", () => {
+    drilldown.resize();
+    capChart.resize();
+  });
 }
 
 function syncControls(current) {
   segmented("period", current.period, (value) => state.update({ period: value, pid: "" }));
   segmented("chart-mode", current.mode, (value) => state.update({ mode: value }));
+  segmented("cap-kind", current.cap, (value) => state.update({ cap: value }));
+  const maShow = /** @type {HTMLInputElement} */ ($("ma-show"));
+  const maLen = /** @type {HTMLInputElement} */ ($("ma-len"));
+  maShow.checked = Boolean(current.ma);
+  maLen.value = String(maLength(current.ma_n));
+  maLen.disabled = !current.ma;
   sel("range").value = current.range;
   sel("top").value = current.top;
   sel("event-type").value = current.event_type;
@@ -294,6 +344,7 @@ function syncControls(current) {
 theme.init(() => {
   bump.repaint();
   drilldown.repaint(cache.history);
+  capChart.repaint();
 });
 bind();
 state.onChange((current) => {

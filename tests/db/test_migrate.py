@@ -20,7 +20,7 @@ EXPECTED_TABLES = {
     "trading_calendar", "price_daily", "shares_observation", "corporate_action", "special_event",
     # 파생
     "period_calendar", "security_period_return", "universe_period_stat",
-    "group_period_stat", "group_member_contribution",
+    "group_period_stat", "group_member_contribution", "group_daily_cap",
     # 운영
     "batch_run", "validation_result", "restatement_log", "recalc_request",
 }
