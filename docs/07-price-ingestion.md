@@ -231,6 +231,7 @@ theme_radar/prices/
 .venv\Scripts\python -m theme_radar prices restate   --market KR --only 001080 # 지정 종목 전 구간 재수정
 .venv\Scripts\python -m theme_radar prices backfill  --market US --only NFLX   # 지정 종목만 받아 확인
 .venv\Scripts\python -m theme_radar prices shares    --market KR               # 가격은 두고 주식수 관측·재계산·검증·특이사항만 다시
+.venv\Scripts\python -m theme_radar prices events    --market KR               # 아무것도 받지 않고 특이사항만 다시 뽑는다 (§11.2)
 ```
 
 - 수집 시작일은 `config.toml`의 `collect.start_date`다.
@@ -852,6 +853,18 @@ Yahoo 분할 이벤트가 없는 2,135종목 중 1,989종목은 2025-01-02 ~ 202
 | `CORP_ACTION` | 주식수에 반영하지 않은 기업행위. KR 비정수 수정계수, US 비정수 분할 비율 | 권리락 전일 시총 |
 | `DATA_GAP` | 알려진 데이터 공백과 근사 구간 (G-1, G-2, G-3) | 추정 규모. 모르면 NULL |
 
+**출처.** 사건마다 그 사건을 만든 값이 어디서 왔는지를 `source`에 남긴다. 값은 원천 테이블의 출처 코드와 같다([§6](#6-저장소-스키마)).
+
+| 유형 | `source` | 어디서 오는가 |
+| --- | --- | --- |
+| `LISTING` | KR `KIND_LISTING` · US `WIKI_SP500` | 유니버스 편입 이력([§7.1](#71-종목-마스터와-유니버스), [§8.1](#81-구성종목-이력)). 편입 이력에는 행마다 출처가 없어 **시장별 고정값**이다 |
+| `DELISTING` | KR `FDR_KRX_DELISTING` · US `WIKI_SP500` | 〃 |
+| `SHARE_CHANGE` | `DAUM_QUOTE`, `FDR_KRX_CACHE`, `SEC_DEI`, `YF_INFO` | 그날 상장주식수로 쓴 `shares_observation`의 출처. as-of 규칙이라 그날 관측치가 없으면 그 앞의 최신 관측치이고, 같은 날 여러 출처가 있으면 [§6](#6-저장소-스키마)의 우선순위로 고른다 |
+| `CORP_ACTION` | `NAVER_FACTOR_JUMP`, `YFINANCE_SPLIT`, `MANUAL` | 같은 종목·권리락일의 `corporate_action.source`. 둘 이상이면 쉼표로 잇는다 |
+| `DATA_GAP` | `INTERNAL` | 바깥 출처가 아니라 우리 판정이다. 근거는 `detail`의 G-번호와 [§2.2](#22-알려진-한계와-처리) |
+
+- 출처는 사건과 함께 매 실행마다 다시 뽑는다. 스키마를 올린 뒤 첫 수집 전까지는 `NULL`이고, 화면에는 `—`로 나온다.
+- 수집 원문은 `data/raw/prices/<출처>/<날짜>/`에 남아 있어, 출처 코드에서 그날 받은 파일까지 짚을 수 있다([§10.3](#103-요청-규칙)).
 - `sector_share`는 사건 시점 섹터 시총 대비 비중이다. 이 값으로 정렬하면 섹터 흐름에 영향이 큰 사건부터 보인다.
 - 사건은 `daily`·`backfill`·`reconcile` 실행 끝에 수집 데이터에서 시장 단위로 모두 다시 뽑는다. 같은 사건은 (시장, 유형, 종목, 날짜)로 한 번만 기록하고, 계속 나오는 사건은 처음 기록한 시각을 유지한다. 계산을 고쳐 더 이상 나오지 않는 사건은 사라진다.
 - `LISTING`·`DELISTING`은 유니버스 편입 기간의 시작·끝에서 만든다. US `DELISTING`의 날짜는 편출 효력일이다.

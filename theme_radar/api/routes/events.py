@@ -16,7 +16,7 @@ EVENT_TYPES = ("LISTING", "DELISTING", "RECLASS", "SHARE_CHANGE", "CORP_ACTION",
 
 EVENT_SQL = """
 SELECT e.event_id, e.market_code, e.event_date, e.end_date, e.event_type, e.group_code, e.market_cap,
-       e.sector_share, e.detail, s.ticker, s.name_local, s.name_en, cg.group_name, cg.group_name_en
+       e.sector_share, e.detail, e.source, s.ticker, s.name_local, s.name_en, cg.group_name, cg.group_name_en
 FROM special_event e
 LEFT JOIN security s USING (security_id)
 LEFT JOIN classification_group cg ON cg.group_code = e.group_code
@@ -62,6 +62,6 @@ def events(universe: str, event_type: str | None = Query(None, alias="type"),
         name=((r["name_en"] or r["name_local"]) if lang == "en" else r["name_local"]) if r["ticker"] else None,
         group_code=r["group_code"],
         group_name=(r["group_name_en"] or r["group_name"]) if lang == "en" else r["group_name"],
-        market_cap=r["market_cap"], sector_share=r["sector_share"], detail=r["detail"]) for r in rows]
+        market_cap=r["market_cap"], sector_share=r["sector_share"], detail=r["detail"], source=r["source"]) for r in rows]
     return {"meta": {"universe": scope.universe, "market": scope.market, "count": len(data), "by_type": counts},
             "data": data}

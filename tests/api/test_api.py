@@ -116,14 +116,15 @@ def test_securities_search(client):
 def test_events(client, con, market):
     with transaction(con):
         con.execute("INSERT INTO special_event (market_code, event_date, event_type, security_id, group_code, market_cap, "
-                    "sector_share, detail, created_at) VALUES ('KR', '2025-01-08', 'LISTING', ?, 'WI500', 5e8, 0.12, "
-                    "'비사 편입', '2025-01-20T00:00:00Z')", (market["B"],))
+                    "sector_share, detail, source, created_at) VALUES ('KR', '2025-01-08', 'LISTING', ?, 'WI500', 5e8, 0.12, "
+                    "'비사 편입', 'KIND_LISTING', '2025-01-20T00:00:00Z')", (market["B"],))
         con.execute("INSERT INTO special_event (market_code, event_date, event_type, detail, created_at) "
                     "VALUES ('KR', '2025-01-02', 'DATA_GAP', 'G-1 근사 구간', '2025-01-20T00:00:00Z')")
     body = get(client, "/api/v1/events", universe="KR_COMMON").json()
     assert body["meta"]["by_type"] == {"LISTING": 1, "DATA_GAP": 1}
     assert [e["event_type"] for e in body["data"]] == ["LISTING", "DATA_GAP"]     # 섹터 비중이 큰 순서
     assert body["data"][0]["ticker"] == "000002" and body["data"][0]["group_name"] == "은행"
+    assert body["data"][0]["source"] == "KIND_LISTING" and body["data"][1]["source"] is None
     only = get(client, "/api/v1/events", universe="KR_COMMON", type="DATA_GAP").json()["data"]
     assert len(only) == 1 and only[0]["ticker"] is None
 
@@ -141,7 +142,7 @@ def test_cache_headers(client, con):
     assert stale.json()["meta"]["stale"] is True and stale.headers["cache-control"] == "no-store"
 
 
-def test_serve_uses_the_db_flag(monkeypatch, db_path):
+def test_serve_uses_the_db_flag(monkeypatch, con, db_path):
     """--db는 선언만 하고 쓰지 않으면 조용히 운영 DB를 연다."""
     import argparse
 
@@ -152,6 +153,18 @@ def test_serve_uses_the_db_flag(monkeypatch, db_path):
     args = argparse.Namespace(port=None, db=str(db_path))
     __main__.cmd_serve(args, load_config())
     assert seen["path"] == str(db_path)
+
+
+def test_serve_stops_on_an_outdated_schema(monkeypatch, tmp_path):
+    """API는 최신 스키마를 전제한다. 열 하나가 없어 요청마다 500이 나는 것보다 띄울 때 멈추는 편이 낫다."""
+    import argparse
+
+    from theme_radar import __main__
+
+    monkeypatch.setattr("theme_radar.api.app.serve", lambda config: pytest.fail("스키마가 낡았는데 API를 띄웠다"))
+    args = argparse.Namespace(port=None, db=str(tmp_path / "empty.sqlite3"))
+    with pytest.raises(SystemExit, match="init-db"):
+        __main__.cmd_serve(args, load_config())
 
 
 def test_read_connection_survives_a_thread_hop(con, db_path):

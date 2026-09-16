@@ -351,13 +351,15 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
   "data": [
     { "event_id": 412, "market": "KR", "event_date": "2025-11-24", "end_date": null, "event_type": "CORP_ACTION",
       "ticker": "207940", "name": "삼성바이오로직스", "group_code": "WI410", "group_name": "건강관리",
-      "market_cap": 8.23e13, "sector_share": 0.243, "detail": "207940 가격계수 1.471744, 주식수 미반영" }
+      "market_cap": 8.23e13, "sector_share": 0.243, "detail": "207940 가격계수 1.471744, 주식수 미반영",
+      "source": "NAVER_FACTOR_JUMP" }
   ]
 }
 ```
 
 - `sector_share`는 사건 시점 섹터 시총 대비 사건 규모다. 이 값으로 정렬하면 섹터 흐름에 영향이 큰 사건부터 나온다.
 - 시장 단위 사건(데이터 공백 등)은 `ticker`와 `group_code`가 `null`이다.
+- `source`는 그 사건을 만든 값의 수집 출처다. 유형별 값과 뜻은 [07 §11.2](07-price-ingestion.md#112-특이사항)에 있다. 한 사건에 출처가 둘 이상이면 쉼표로 잇는다. 아직 다시 뽑지 않은 사건은 `null`이다.
 
 ## 7. 캐싱
 

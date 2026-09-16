@@ -156,6 +156,7 @@ AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 | `corporate_action` | `(security_id, ex_date, source)` | 분할·병합 등 기업행위 기록. 가격 계수와 주식수 비율을 따로 둔다 ([07 §9](07-price-ingestion.md#9-액면분할병합-소급-갱신)) |
 | `special_event` | `event_id` | 특이사항. 가격이 아닌 이유로 섹터 시총을 바꾸거나 계산에 오차를 남기는 사건 ([07 §11.2](07-price-ingestion.md#112-특이사항)) |
 
+- `special_event.source`는 그 사건을 만든 값의 수집 출처다. 원천 테이블의 출처 코드를 그대로 쓴다 ([07 §11.2](07-price-ingestion.md#112-특이사항)).
 - `special_event`는 `(market_code, event_type, security_id, event_date)`로 한 번만 기록한다. 시장 단위 사건은 `security_id`가 `NULL`이므로, 유니크 인덱스에서 `IFNULL(security_id, 0)`을 쓴다.
 
 ## 5. 파생(집계) 테이블

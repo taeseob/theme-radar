@@ -1,7 +1,7 @@
 from theme_radar.db import transaction
 from theme_radar.prices import store
 from theme_radar.prices.adjust import PriceRow
-from theme_radar.prices.events import Event, upsert_event
+from theme_radar.prices.events import Event, shares_source, upsert_event
 
 NOW = "2026-09-16T00:00:00Z"
 
@@ -43,4 +43,17 @@ def test_upsert_event_keeps_one_row_per_event_including_market_level(con):
     with transaction(con):
         for cap in (1.0, 2.0):
             upsert_event(con, "KR", Event("2025-01-01", "DATA_GAP", f"G-1 {cap}", end_date="2026-03-08", market_cap=cap), None, None, NOW)
-    assert con.execute("SELECT COUNT(*), MAX(market_cap), MAX(detail) FROM special_event").fetchone() == (1, 2.0, "G-1 2.0")
+    assert con.execute("SELECT COUNT(*), MAX(market_cap), MAX(detail), MAX(source) FROM special_event").fetchone() \
+        == (1, 2.0, "G-1 2.0", "INTERNAL")
+
+
+def test_shares_source_follows_as_of_rule_and_priority(con):
+    sid = add_security(con)
+    with transaction(con):
+        store.add_observations(con, [(sid, "2026-03-02", 4_000_000, "SEC_DEI"),
+                                     (sid, "2026-03-06", 4_150_000, "FDR_KRX_CACHE"),
+                                     (sid, "2026-03-06", 4_150_000, "DAUM_QUOTE")], "AS_REPORTED", NOW)
+    assert shares_source(con, sid, "2026-03-06") == "DAUM_QUOTE"      # 같은 날은 출처 우선순위대로
+    assert shares_source(con, sid, "2026-03-09") == "DAUM_QUOTE"      # 그날 관측치가 없으면 앞의 최신 관측치
+    assert shares_source(con, sid, "2026-03-03") == "SEC_DEI"
+    assert shares_source(con, sid, "2026-03-01") is None

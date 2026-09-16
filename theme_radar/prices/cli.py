@@ -32,6 +32,7 @@ def add_commands(commands: argparse._SubParsersAction, open_db) -> None:
     restate = market_parser("restate", "지정한 종목의 전 구간 수정 종가를 다시 받는다", _collect, mode="restate")
     restate.add_argument("--only", nargs="+", required=True, metavar="TICKER")
     market_parser("shares", "가격은 받지 않고 상장주식수 관측치 수집·재계산·검증·특이사항만 전 구간으로 다시 한다", _shares)
+    market_parser("events", "아무것도 받지 않고 이미 쌓인 수집 데이터에서 특이사항만 다시 뽑는다", _events)
 
 
 def _universe(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
@@ -89,6 +90,15 @@ def _shares(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
         validate.run_checks(ctx)
         events.build_events(ctx)
         _report(ctx, run)
+    return _exit_code(run)
+
+
+def _events(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
+    """특이사항만 다시 뽑는다. 출처처럼 사건 필드가 늘었을 때 수집 없이 채우는 용도다 (docs/07 §11.2)."""
+    con = open_db(args, config)
+    with run_job(con, "prices-events", args.market) as run:
+        ctx = build_context(con, run, config, args.market, full=True, save_raw=not args.no_raw)
+        events.build_events(ctx)
     return _exit_code(run)
 
 

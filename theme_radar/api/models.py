@@ -215,6 +215,7 @@ class SpecialEvent(Model):
     market_cap: float | None = None
     sector_share: float | None = None
     detail: str
+    source: str | None = None
 
 
 class ListResponse(Model):

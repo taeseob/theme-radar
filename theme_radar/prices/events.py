@@ -10,9 +10,14 @@ from dataclasses import dataclass
 from theme_radar.db import transaction
 from theme_radar.prices.context import Context
 from theme_radar.prices.sources import sec
+from theme_radar.prices.store import SHARES_PRIORITY
 from theme_radar.prices.universe import day_before
 
 SCHEMES = {"KR": ("WI26", "KR_COMMON"), "US": ("GICS", "US_SP500")}
+# 유니버스 편입 이력의 출처는 시장마다 고정이다 (docs/07 §7.1, §8.1). 편입 이력 자체에는 행마다 출처가 없다
+UNIVERSE_SOURCE = {"KR": {"LISTING": "KIND_LISTING", "DELISTING": "FDR_KRX_DELISTING"},
+                   "US": {"LISTING": "WIKI_SP500", "DELISTING": "WIKI_SP500"}}
+INTERNAL = "INTERNAL"               # 바깥 출처가 아니라 우리 판정이다. 근거는 detail의 G-번호 (docs/07 §2.2)
 
 
 @dataclass
@@ -24,6 +29,7 @@ class Event:
     end_date: str | None = None
     market_cap: float | None = None
     cap_date: str | None = None     # 섹터 비중을 계산할 거래일
+    source: str | None = INTERNAL   # 이 사건을 만든 값의 출처 (docs/07 §11.2). 모르면 NULL
 
 
 def build_events(ctx: Context) -> int:
@@ -39,19 +45,23 @@ def build_events(ctx: Context) -> int:
             (universe, ctx.start, ctx.start)):
         if valid_from > ctx.start:
             cap, d = _cap_on_or_after(con, sid, valid_from)
-            events.append(Event(valid_from, "LISTING", f"{ticker} 편입", sid, market_cap=cap, cap_date=d))
+            events.append(Event(valid_from, "LISTING", f"{ticker} 편입", sid, market_cap=cap, cap_date=d,
+                                source=UNIVERSE_SOURCE[market]["LISTING"]))
         if valid_to < "9999-12-31":
             cap, d = _cap_on_or_before(con, sid, valid_to)
             removed = _day_after(valid_to)
-            events.append(Event(removed, "DELISTING", f"{ticker} 편출 (마지막 편입일 {valid_to})", sid, market_cap=cap, cap_date=d))
+            events.append(Event(removed, "DELISTING", f"{ticker} 편출 (마지막 편입일 {valid_to})", sid, market_cap=cap, cap_date=d,
+                                source=UNIVERSE_SOURCE[market]["DELISTING"]))
 
     # CORP_ACTION: 주식수에 반영하지 않은 기업행위
-    for sid, ticker, ex_date, factor in con.execute(
-            "SELECT c.security_id, s.ticker, c.ex_date, MIN(c.price_factor) FROM corporate_action c JOIN security s USING (security_id) "
+    for sid, ticker, ex_date, factor, source in con.execute(
+            "SELECT c.security_id, s.ticker, c.ex_date, MIN(c.price_factor), GROUP_CONCAT(DISTINCT c.source) "
+            "FROM corporate_action c JOIN security s USING (security_id) "
             "WHERE s.market_code = ? AND c.share_ratio IS NULL AND c.ex_date >= ? GROUP BY c.security_id, c.ex_date",
             (market, ctx.start)):
         cap, d = _cap_on_or_before(con, sid, day_before(ex_date))
-        events.append(Event(ex_date, "CORP_ACTION", f"{ticker} 가격계수 {factor:.6f}, 주식수 미반영", sid, market_cap=cap, cap_date=d))
+        events.append(Event(ex_date, "CORP_ACTION", f"{ticker} 가격계수 {factor:.6f}, 주식수 미반영", sid, market_cap=cap, cap_date=d,
+                            source=source))
 
     # SHARE_CHANGE: 분할·병합 없이 상장주식수가 전일 대비 임계값 넘게 바뀜
     threshold = ctx.config["checks"]["share_change_threshold"]
@@ -67,7 +77,7 @@ def build_events(ctx: Context) -> int:
                  AND NOT EXISTS (SELECT 1 FROM corporate_action c WHERE c.security_id = p.security_id AND c.ex_date = p.trade_date)""",
             (market, threshold)):
         events.append(Event(d, "SHARE_CHANGE", f"{ticker} 상장주식수 {prev:,} → {shares:,} ({shares / prev - 1:+.1%})", sid,
-                            market_cap=(shares - prev) * raw, cap_date=d))
+                            market_cap=(shares - prev) * raw, cap_date=d, source=shares_source(con, sid, d)))
 
     # DATA_GAP: 알려진 데이터 공백과 근사 구간
     events.extend(_data_gaps(ctx))
@@ -87,14 +97,14 @@ def build_events(ctx: Context) -> int:
 
 
 def upsert_event(con, market: str, e: Event, group: str | None, share: float | None, now: str) -> None:
-    """같은 사건(시장, 유형, 종목, 날짜)은 한 행만 둔다. 이미 있으면 규모·섹터·설명을 갱신한다."""
+    """같은 사건(시장, 유형, 종목, 날짜)은 한 행만 둔다. 이미 있으면 규모·섹터·설명·출처를 갱신한다."""
     con.execute(
         "INSERT INTO special_event (market_code, event_date, end_date, event_type, security_id, group_code, market_cap, "
-        "sector_share, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "sector_share, detail, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (market_code, event_type, IFNULL(security_id, 0), event_date) DO UPDATE SET "
         "end_date = excluded.end_date, group_code = excluded.group_code, market_cap = excluded.market_cap, "
-        "sector_share = excluded.sector_share, detail = excluded.detail",
-        (market, e.event_date, e.end_date, e.event_type, e.security_id, group, e.market_cap, share, e.detail, now))
+        "sector_share = excluded.sector_share, detail = excluded.detail, source = excluded.source",
+        (market, e.event_date, e.end_date, e.event_type, e.security_id, group, e.market_cap, share, e.detail, e.source, now))
 
 
 def _data_gaps(ctx: Context) -> list[Event]:
@@ -124,6 +134,20 @@ def _data_gaps(ctx: Context) -> list[Event]:
         out.append(Event(ctx.start, "DATA_GAP", f"G-3: SEC 공시 주식수를 쓸 수 없어 과거 주식수를 yfinance 현재 값으로 근사한 라인 {len(rows)}개: {[t for t, _ in rows]}",
                          end_date=day_before(first)))
     return out
+
+
+def shares_source(con, sid: int, d: str) -> str | None:
+    """그날 상장주식수로 쓴 관측치의 출처.
+
+    as-of 규칙이라 그날 관측치가 없으면 그 앞의 최신 관측치가 쓰인다(store.refresh_shares).
+    같은 날 여러 출처가 있으면 같은 우선순위로 고른다.
+    """
+    rows = [r[0] for r in con.execute(
+        "SELECT source FROM shares_observation WHERE security_id = ? AND as_of_date = "
+        "(SELECT MAX(as_of_date) FROM shares_observation WHERE security_id = ? AND as_of_date <= ?)", (sid, sid, d))]
+    if not rows:
+        return None
+    return min(rows, key=lambda s: SHARES_PRIORITY.index(s) if s in SHARES_PRIORITY else len(SHARES_PRIORITY))
 
 
 def _cap_on_or_after(con, sid: int, d: str) -> tuple[float | None, str | None]:

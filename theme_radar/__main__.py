@@ -116,6 +116,7 @@ def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
     """API와 화면을 띄운다 (docs/09 §4.3). 127.0.0.1에만 바인딩한다."""
     from theme_radar.api.app import serve
 
+    open_db(args, config).close()        # 스키마가 최신이 아니면 여기서 멈춘다. API는 최신 스키마를 전제한다
     if args.port:
         config = {**config, "api": {**config["api"], "port": args.port}}
     config = {**config, "db": {**config["db"], "path": str(db_path(args, config))}}
