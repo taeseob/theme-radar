@@ -83,8 +83,11 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .rows { display: grid; gap: 2px; }
 .row { display: grid; gap: 10px; align-items: center;
   padding: 4px 6px; border-radius: 6px; font-variant-numeric: tabular-nums; }
-/* 섹터 행: 섹터 · 막대 · 수익률 · 시총 비중 · 시장 기여 · 시장 대비 · 순위 변동 · 특징 */
-#snapshot .row { grid-template-columns: 190px 1fr 88px 80px 84px 64px 64px auto; }
+/* 섹터 행: 섹터 · 막대 · 수익률 · 시총 비중 · 시장 기여 · 시장 대비 · 순위 변동 · 특징
+   0 선이 세로로 이어지려면 막대 칸이 행마다 같은 폭이어야 한다. 마지막 특징 칸을 내용에 맞춰(auto) 두면
+   배지 수만큼 칸이 늘어 막대 칸을 밀어내므로, 배지 3개가 들어가는 고정 폭으로 둔다 */
+#snapshot .row { grid-template-columns: 190px minmax(0, 1fr) 88px 80px 84px 64px 64px 232px; }
+#snapshot .row > :last-child { overflow: hidden; white-space: nowrap; }
 .row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .row.clickable { cursor: pointer; }
 .row.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -94,8 +97,9 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .row .muted, .muted { color: var(--muted); }
 .row.unmapped .name { color: var(--muted); }
 .bar-cell { position: relative; height: 16px; }
-/* 기준 0 선. 행 사이 여백까지 이어 붙여 열을 가르는 한 줄로 보이게 한다 */
-.bar-cell .zero { position: absolute; left: 50%; top: -5px; bottom: -5px; border-left: 1px solid var(--line); }
+/* 기준 0 선. 행 사이 여백까지 이어 붙여 열을 가르는 한 줄로 보이게 한다.
+   6px는 행 간격(28px)에서 막대 칸 높이(16px)를 뺀 절반이다 */
+.bar-cell .zero { position: absolute; left: 50%; top: -6px; bottom: -6px; border-left: 1px solid var(--line); }
 /* 머리글의 막대 눈금: 왼쪽 끝 −최대, 가운데 0, 오른쪽 끝 +최대 */
 .bar-cell.axis { height: 14px; }
 .bar-cell.axis .zero { top: 1px; }
@@ -146,6 +150,10 @@ th:first-child, td:first-child { text-align: left; position: sticky; left: 0; ba
 thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); }
 
 @media (max-width: 1280px) { .split { grid-template-columns: 1fr; } }
+/* 고정 폭이 화면을 넘지 않게 줄인다. 특징 칸은 배지 하나만 남고 나머지는 잘린다 (드릴다운에서 전부 본다) */
+@media (max-width: 1080px) {
+  #snapshot .row { grid-template-columns: 150px minmax(0, 1fr) 80px 72px 76px 56px 52px 120px; }
+}
 @media (max-width: 768px) {
   main { padding: 10px; }
   .chart-scroll { height: 380px; }
