@@ -8,12 +8,14 @@ export const DEFAULTS = {
   range: "26",
   top: "0",
   mode: "rank",        // rank | return
+  basis: "period",     // period | ma — 순위와 상승률의 기준 (docs/06 §3.5)
+  above: "",           // "1"이면 이동평균 위에 있는 섹터만 그린다 (basis=ma)
   view: "chart",       // chart | table — 표 대체 표현 (docs/06 §8)
   group: "",           // 드릴다운으로 연 섹터
   pid: "",             // 선택한 기간 (비어 있으면 최신)
   cap: "line",         // line | candle — 섹터 시가총액 차트 모양 (docs/06 §5.4)
-  ma: "",              // "1"이면 이동평균선을 그린다
-  ma_n: "5",           // 이동평균 기간 수
+  ma: "",              // "1"이면 시가총액 차트에 이동평균선을 그린다
+  ma_n: "5",           // 이동평균 기간 수. 순위 기준·이격도·시가총액 차트가 함께 쓴다
   event_type: "",
 };
 

@@ -211,6 +211,25 @@ class MarketCapResponse(Model):
     data: list[MarketCapPoint]
 
 
+class GroupClose(Model):
+    """기간 말 섹터 시가총액. 이동평균·상승률·이격도는 화면이 이 값으로 계산한다 (docs/03 §14.3)."""
+    period_id: str
+    close: float
+    member_cnt: int
+
+
+class GroupCloseSeries(Model):
+    group_code: str
+    name: str
+    color: str | None = None
+    points: list[GroupClose]
+
+
+class MarketCapsResponse(Model):
+    meta: Meta
+    data: list[GroupCloseSeries]
+
+
 class SecurityHit(Model):
     security_id: int
     ticker: str

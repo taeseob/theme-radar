@@ -12,8 +12,9 @@ from fastapi.responses import PlainTextResponse
 
 from theme_radar.api import deps
 from theme_radar.api.models import (BreakdownData, BreakdownMember, BreakdownOthers, BreakdownResponse, BreakdownSummary,
-                                    HistoryPoint, HistoryResponse, MarketCapPoint, MarketCapResponse, Meta, RankPoint,
-                                    RanksData, RanksPeriod, RanksResponse, RankSeries, ReturnsResponse, SectorRow, r8, r10)
+                                    GroupClose, GroupCloseSeries, HistoryPoint, HistoryResponse, MarketCapPoint,
+                                    MarketCapResponse, MarketCapsResponse, Meta, RankPoint, RanksData, RanksPeriod,
+                                    RanksResponse, RankSeries, ReturnsResponse, SectorRow, r8, r10)
 
 router = APIRouter(tags=["sectors"])
 UNMAPPED = "UNMAPPED"
@@ -52,6 +53,10 @@ def _group_rows(con, scope: deps.Scope, period_id: str) -> list[sqlite3.Row]:
                        (scope.universe, scope.scheme, scope.period_type, period_id)).fetchall()
 
 
+def _sorted_codes(names: dict[str, sqlite3.Row], codes) -> list[str]:
+    return sorted(codes, key=lambda c: (names[c]["sort_order"] if c in names else 0, c))
+
+
 @router.get("/sectors/ranks", response_model=RanksResponse)
 def ranks(response: Response, universe: str, scheme: str, period: str = "W",
           from_: str | None = Query(None, alias="from"), to: str | None = None, lang: str = "ko",
@@ -87,7 +92,7 @@ def ranks(response: Response, universe: str, scheme: str, period: str = "W",
     kept = [code for code in by_group if not top_n or best_rank[code] <= top_n]
 
     series = []
-    for code in sorted(kept, key=lambda c: (names[c]["sort_order"] if c in names else 0, c)):
+    for code in _sorted_codes(names, kept):
         points = []
         for row in by_group[code]:
             rank = row["rank_contrib"] if rank_by == "contribution" else row["rank_ret"]
@@ -149,6 +154,45 @@ def returns(response: Response, universe: str, scheme: str, period: str = "W", p
                                 is_provisional=bool(universe_row["is_provisional"]),
                                 universe_return=r8(universe_row["ret"])))
     return ReturnsResponse(meta=meta, data=data)
+
+
+@router.get("/sectors/market-caps", response_model=MarketCapsResponse)
+def market_caps(response: Response, universe: str, scheme: str, period: str = "W",
+                from_: str | None = Query(None, alias="from"), to: str | None = None, lang: str = "ko",
+                con: sqlite3.Connection = Depends(deps.get_con)) -> MarketCapsResponse:
+    """섹터 전체의 기간 말 시가총액 (docs/05 §3.3).
+
+    이동평균·상승률·이격도는 화면이 이 값으로 계산한다 (docs/03 §14.3). 미매핑 의사 그룹은 순위가 없어 빼고 준다.
+    """
+    scope, rng, info, stale = _prepare(con, universe, scheme, period, from_, to)
+    rows = con.execute(
+        "SELECT group_code, trade_date, market_cap, member_cnt FROM group_daily_cap WHERE universe_code = ? "
+        "AND scheme_code = ? AND group_code <> 'UNMAPPED' AND trade_date BETWEEN ? AND ? ORDER BY group_code, trade_date",
+        (scope.universe, scope.scheme, rng.rows[0]["base_date"], rng.end_date)).fetchall()
+    if not rows:
+        raise deps.ApiError(409, "NOT_AVAILABLE", f"{scope.universe} {scope.scheme} 섹터 일별 시총이 아직 없다")
+    deps.apply_cache(response, info, stale)
+
+    by_group: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        by_group.setdefault(row["group_code"], []).append(row)
+    names = deps.group_names(con, scope.scheme)
+    data = []
+    for code in _sorted_codes(names, by_group):
+        group_rows = by_group[code]
+        dates = [row["trade_date"] for row in group_rows]
+        points = []
+        for p in rng.rows:
+            # 기간 말 값은 기준일 다음 거래일부터 종료일까지 중 마지막 값이다 (docs/03 §14.2)
+            days = group_rows[bisect_right(dates, p["base_date"]):bisect_right(dates, p["end_date"])]
+            if not days:
+                continue
+            points.append(GroupClose(period_id=p["period_id"], close=round(days[-1]["market_cap"]),
+                                     member_cnt=days[-1]["member_cnt"]))
+        data.append(GroupCloseSeries(group_code=code, name=group_label(names, code, lang),
+                                     color=names[code]["color_hex"] if code in names else None, points=points))
+    meta = Meta(**deps.envelope(scope, info, stale, **{"from": rng.from_id, "to": rng.to_id, "group_count": len(data)}))
+    return MarketCapsResponse(meta=meta, data=data)
 
 
 @router.get("/sectors/{group_code}/breakdown", response_model=BreakdownResponse)

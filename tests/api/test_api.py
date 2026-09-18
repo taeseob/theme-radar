@@ -124,11 +124,25 @@ def test_market_cap_candles_from_daily_caps(client):
     assert [(p["open"], p["high"], p["low"], p["close"], p["member_cnt"]) for p in banks] == [(1.2e8, 1.2e8, 5e7, 5e7, 1)]
 
 
+def test_market_caps_carry_every_sector(client):
+    """화면이 이동평균·상승률·이격도를 만드는 입력이다 (docs/03 §14.3)."""
+    body = get(client, "/api/v1/sectors/market-caps", universe="KR_COMMON", scheme="WI26").json()
+    assert body["meta"]["from"] == CLOSED and body["meta"]["to"] == PROVISIONAL and body["meta"]["group_count"] == 2
+    series = {s["group_code"]: s for s in body["data"]}
+    assert series["WI620"]["name"] == "반도체" and series["WI620"]["color"] == "#2a78d6"
+    # 기간 말 값은 /sectors/{g}/market-cap의 close와 같다
+    assert [(p["period_id"], p["close"], p["member_cnt"]) for p in series["WI620"]["points"]] == [
+        (CLOSED, 1.06e9, 1), (PROVISIONAL, 1.11e9, 1)]
+    # 은행은 E가 2025-01-13부터 거래정지라 잠정 기간에는 B만 남는다
+    assert [(p["close"], p["member_cnt"]) for p in series["WI500"]["points"]] == [(1.2e8, 2), (5e7, 1)]
+
+
 def test_market_cap_before_daily_caps_are_written(client, con):
     with transaction(con):
         con.execute("DELETE FROM group_daily_cap")
-    response = client.get("/api/v1/sectors/WI620/market-cap", params={"universe": "KR_COMMON", "scheme": "WI26"})
-    assert response.status_code == 409 and response.json()["error"]["code"] == "NOT_AVAILABLE"
+    for path in ("/api/v1/sectors/WI620/market-cap", "/api/v1/sectors/market-caps"):
+        response = client.get(path, params={"universe": "KR_COMMON", "scheme": "WI26"})
+        assert response.status_code == 409 and response.json()["error"]["code"] == "NOT_AVAILABLE"
 
 
 def test_securities_search(client):
@@ -151,6 +165,10 @@ def test_events(client, con, market):
     assert body["data"][0]["source"] == "KIND_LISTING" and body["data"][1]["source"] is None
     only = get(client, "/api/v1/events", universe="KR_COMMON", type="DATA_GAP").json()["data"]
     assert len(only) == 1 and only[0]["ticker"] is None
+    # 섹터 시가총액 차트가 그 섹터의 사건만 받아 표시에 쓴다 (docs/06 §5.4)
+    banks = get(client, "/api/v1/events", universe="KR_COMMON", group_code="WI500").json()["data"]
+    assert [e["ticker"] for e in banks] == ["000002"]
+    assert get(client, "/api/v1/events", universe="KR_COMMON", group_code="WI620").json()["data"] == []
 
 
 def test_cache_headers(client, con):

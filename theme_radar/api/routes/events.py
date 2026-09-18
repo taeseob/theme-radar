@@ -30,7 +30,7 @@ LIMIT ?
 
 @router.get("/events")
 def events(universe: str, event_type: str | None = Query(None, alias="type"),
-           from_: str | None = Query(None, alias="from"), to: str | None = None,
+           group_code: str | None = None, from_: str | None = Query(None, alias="from"), to: str | None = None,
            min_sector_share: float = Query(0.0, ge=0), limit: int = Query(50, ge=1, le=500),
            sort: str = Query("sector_share", pattern="^(sector_share|date)$"), lang: str = "ko",
            con: sqlite3.Connection = Depends(deps.get_con)) -> dict:
@@ -42,6 +42,10 @@ def events(universe: str, event_type: str | None = Query(None, alias="type"),
     if event_type:
         where.append("e.event_type = ?")
         params.append(event_type)
+    if group_code:
+        # 사건의 group_code는 시장의 배타 스킴(WI26·GICS) 코드다. 테마 스킴으로 보는 중이면 걸리는 사건이 없다
+        where.append("e.group_code = ?")
+        params.append(group_code)
     if from_:
         where.append("COALESCE(e.end_date, e.event_date) >= ?")
         params.append(from_)

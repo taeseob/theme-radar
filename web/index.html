@@ -29,6 +29,8 @@
       <option value="5">상위 5</option>
       <option value="10">상위 10</option>
     </select></label>
+    <label title="섹터 시총 이동평균의 기간 수. 순위 기준·이격도·시가총액 차트가 함께 쓴다">이동평균
+      <input type="number" id="ma-len" min="2" max="52" step="1" inputmode="numeric"> 기간</label>
   </div>
   <button type="button" id="theme-toggle" class="ghost" title="라이트/다크 전환">◐</button>
 </header>
@@ -41,9 +43,15 @@
       <h2>섹터 순위 추이</h2>
       <div class="head-right">
         <span id="market-summary" class="summary"></span>
+        <span class="segmented" id="chart-basis" aria-label="순위 기준">
+          <button type="button" data-value="period" title="기간 수익률로 순위를 매긴다">기간</button><button
+            type="button" data-value="ma" title="섹터 시총 이동평균의 상승률로 순위를 매긴다">이동평균</button>
+        </span>
         <span class="segmented" id="chart-mode">
           <button type="button" data-value="rank">순위</button><button type="button" data-value="return">수익률</button>
         </span>
+        <label class="small" id="above-filter" hidden title="선택 기간 말 시총이 이동평균 위인 섹터만 본다">
+          <input type="checkbox" id="above-ma"> 이동평균 위만</label>
         <button type="button" id="table-toggle" class="ghost">표로 보기</button>
       </div>
     </div>
@@ -61,6 +69,7 @@
           <option value="return">수익률</option>
           <option value="contribution">기여도</option>
           <option value="weight">시총 비중</option>
+          <option value="disparity">이격도</option>
         </select></label>
       </div>
     </div>
@@ -94,13 +103,13 @@
           <span class="segmented" id="cap-kind" aria-label="차트 모양">
             <button type="button" data-value="line">선</button><button type="button" data-value="candle">캔들</button>
           </span>
-          <label class="small"><input type="checkbox" id="ma-show"> 이동평균</label>
-          <label class="small"><input type="number" id="ma-len" min="2" max="52" step="1" inputmode="numeric"> 기간</label>
+          <label class="small" id="ma-show-label"><input type="checkbox" id="ma-show"> 이동평균</label>
         </div>
       </div>
       <div id="cap-chart" class="cap-chart" role="img" aria-label="섹터 시가총액 추이"></div>
       <p class="hint">선은 기간 말 시가총액을 잇고, 캔들은 일별 시가총액으로 그린다(시가는 직전 기간 말 값).
-        이동평균은 기간 말 값의 단순 평균이다. 시가총액은 상장·폐지 같은 가격 외 이유로도 바뀐다(아래 특이사항).</p>
+        이동평균은 기간 말 값의 단순 평균이다. 시가총액은 상장·폐지 같은 가격 외 이유로도 바뀐다:
+        x축 위의 <span class="event-mark">▲</span>는 이 섹터 종목에 특이사항이 난 기간이고, 내용은 그 기간 툴팁에 있다.</p>
     </div>
   </section>
 

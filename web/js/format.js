@@ -44,6 +44,12 @@ export function capTick(value, currency) {
   return Math.abs(value) >= 1e9 ? `$${short(value / 1e9)}B` : `$${short(value / 1e6)}M`;
 }
 
+/** 이격도. 기간 말 시총 ÷ 이동평균 × 100 (docs/03 §14.4). 100보다 크면 이동평균 위다 @param {number|null|undefined} value */
+export function disparity(value) {
+  if (value === null || value === undefined) return "—";
+  return (value * 100).toFixed(1);
+}
+
 /** 순위 변동 화살표. 색만으로 구분하지 않도록 기호를 함께 쓴다 (docs/06 §8) */
 export function rankDelta(delta) {
   if (delta === null || delta === undefined) return { text: "–", className: "muted" };

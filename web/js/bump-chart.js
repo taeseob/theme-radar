@@ -1,6 +1,9 @@
 // @ts-check
-/** 범프 차트 (docs/06 §3). 순위 모드는 y축을 뒤집고, 수익률 모드는 일반 선 차트다. */
-import { bp, escapeHtml, pct, periodLabels } from "./format.js";
+/**
+ * 범프 차트 (docs/06 §3). 순위 모드는 y축을 뒤집고, 수익률 모드는 일반 선 차트다.
+ * 기준(basis)은 기간 수익률이거나 섹터 시총 이동평균의 상승률이다. 두 기준의 값 모양이 같아 그리는 방법은 하나다.
+ */
+import { bp, cap, disparity, escapeHtml, pct, periodLabels } from "./format.js";
 import { seriesColor, token } from "./theme.js";
 
 const GRID = { left: 52, right: 156, top: 16, bottom: 68 };
@@ -10,7 +13,8 @@ const SYMBOL_HIT = 8;                  // 이 거리 안이면 선이 아니라 
 
 /** @type {any} */
 let chart = null;
-/** @type {{payload: any, mode: string, calendar: Map<string, any>, onPick: Function}|null} */
+/** @type {{payload: any, mode: string, basis: string, maLength: number, currency: string,
+ *           calendar: Map<string, any>, onPick: Function}|null} */
 let last = null;
 /** @type {HTMLElement|null} */
 let tip = null;
@@ -80,14 +84,17 @@ function buildSeries(payload, mode, labelled) {
   });
 }
 
-function tooltipHtml(state, name, point) {
-  const period = state.payload.data.periods.find((p) => p.period_id === point.period_id);
-  const cal = state.calendar.get(point.period_id);
-  const universeReturn = period?.universe_return;
+/** 순위 줄. 직전 기간 순위와 변동을 괄호에 적는다 */
+function rankRow(point) {
   const delta = point.rank_delta;
-  const rows = [
-    ["순위", `<b>${point.rank}위</b>`, delta === null || delta === undefined ? ""
-      : `(전 기간 ${point.rank + delta}위, ${delta > 0 ? `▲${delta}` : delta < 0 ? `▼${-delta}` : "–"})`],
+  return ["순위", `<b>${point.rank}위</b>`, delta === null || delta === undefined ? ""
+    : `(전 기간 ${point.rank + delta}위, ${delta > 0 ? `▲${delta}` : delta < 0 ? `▼${-delta}` : "–"})`];
+}
+
+function periodRows(state, point, period) {
+  const universeReturn = period?.universe_return;
+  return [
+    rankRow(point),
     ["수익률", `<b>${pct(point.return)}</b>`, ""],
     ["시장 비중", point.base_weight === null || point.base_weight === undefined ? "—" : `${(point.base_weight * 100).toFixed(2)}%`, ""],
     ["시장 기여", bp(point.contribution),
@@ -97,6 +104,24 @@ function tooltipHtml(state, name, point) {
     ["상위1 기여", point.top1_contrib_share === null || point.top1_contrib_share === undefined
       ? "—" : `${Math.round(point.top1_contrib_share * 100)}%`, ""],
   ];
+}
+
+/** 이동평균 기준 (docs/06 §3.5). 값은 화면이 섹터 시총으로 계산한다 */
+function maRows(state, point) {
+  return [
+    rankRow(point),
+    ["상승률", `<b>${pct(point.return)}</b>`, `(${state.maLength}기간 이동평균 기준)`],
+    ["이동평균", cap(point.ma, state.currency), ""],
+    ["기간 말 시총", cap(point.close, state.currency), ""],
+    ["이격도", disparity(point.disparity), point.disparity > 1 ? "(이동평균 위)" : "(이동평균 아래)"],
+    ["구성종목", `${point.member_cnt}종목`, ""],
+  ];
+}
+
+function tooltipHtml(state, name, point) {
+  const period = state.payload.data.periods.find((p) => p.period_id === point.period_id);
+  const cal = state.calendar.get(point.period_id);
+  const rows = state.basis === "ma" ? maRows(state, point) : periodRows(state, point, period);
   const span = cal ? `${cal.cal_start} ~ ${cal.cal_end}` : "";
   const divider = '<div style="height:1px;background:currentColor;opacity:.15;margin:5px 0"></div>';
   return [
@@ -104,7 +129,7 @@ function tooltipHtml(state, name, point) {
     span ? `<span style="opacity:.7">${span}</span>` : "",
     divider,
     ...rows.map(([k, v, extra]) =>
-      `<span style="display:inline-block;min-width:74px;opacity:.7">${k}</span>${v}${extra ? ` <span style="opacity:.7">${extra}</span>` : ""}`),
+      `<span style="display:inline-block;min-width:82px;opacity:.7">${k}</span>${v}${extra ? ` <span style="opacity:.7">${extra}</span>` : ""}`),
     `<div style="margin-top:5px;opacity:.7">기준일 ${cal?.base_date ?? "—"} → ${period?.end_date ?? "—"}</div>`,
   ].filter(Boolean).join("<br>");
 }
@@ -212,13 +237,16 @@ function options(state, plotHeight) {
 
 /**
  * @param {HTMLElement} container
- * @param {any} payload /sectors/ranks 응답
- * @param {{mode: string, calendar: Map<string, any>, onPick: (groupCode: string, periodId?: string) => void}} opts
+ * @param {any} payload /sectors/ranks 응답이거나 같은 모양으로 만든 이동평균 기준 값 (ma.js toRanks)
+ * @param {{mode: string, basis: string, maLength: number, currency: string, calendar: Map<string, any>,
+ *          onPick: (groupCode: string, periodId?: string) => void}} opts
  */
 export function render(container, payload, opts) {
-  last = { payload, mode: opts.mode, calendar: opts.calendar, onPick: opts.onPick };
+  last = { payload, mode: opts.mode, basis: opts.basis, maLength: opts.maLength, currency: opts.currency,
+           calendar: opts.calendar, onPick: opts.onPick };
   if (!chart || chart.getDom() !== container) {
     chart?.dispose();
+    container.innerHTML = "";          // 안내 문구를 띄웠던 자리면 지우고 그린다
     chart = window.echarts.init(container, null, { renderer: "canvas" });
     chart.on("click", (params) => {
       const code = seriesCode(params);
@@ -266,7 +294,8 @@ export function dispose() {
 }
 
 /** 차트 데이터의 표 대체 표현 (docs/06 §8). CSV 내보내기와 같은 데이터다 */
-export function tableHtml(payload, mode) {
+export function tableHtml(payload, mode, basis = "period") {
+  const valueLabel = basis === "ma" ? "이동평균 상승률" : "수익률";
   const periods = payload.data.periods;
   const head = periods.map((p) => `<th scope="col">${p.period_id}</th>`).join("");
   const rows = payload.data.series.map((line) => {
@@ -278,6 +307,6 @@ export function tableHtml(payload, mode) {
     }).join("");
     return `<tr><th scope="row">${escapeHtml(line.name)}</th>${cells}</tr>`;
   }).join("");
-  return `<table><caption class="muted">범프 차트와 같은 데이터 (${mode === "rank" ? "순위" : "수익률"})</caption>`
+  return `<table><caption class="muted">범프 차트와 같은 데이터 (${mode === "rank" ? "순위" : valueLabel})</caption>`
     + `<thead><tr><th scope="col">섹터</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
 }

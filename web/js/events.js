@@ -7,6 +7,11 @@ const LABEL = {
   SHARE_CHANGE: "주식수 급변", CORP_ACTION: "기업행위", DATA_GAP: "데이터 공백",
 };
 
+/** @param {string} type */
+export function eventLabel(type) {
+  return LABEL[type] || type;
+}
+
 /** 출처 코드의 표시 이름 (docs/07 §11.2). 모르는 코드는 코드 그대로 보여 준다 */
 const SOURCE = {
   KIND_LISTING: "KIND 상장목록", FDR_KRX_DELISTING: "FDR 폐지목록", WIKI_SP500: "위키백과 S&P 500",
@@ -28,7 +33,7 @@ function row(event, currency) {
     : '<span class="muted">—</span>';
   return `<div class="row">
     <span class="num date">${escapeHtml(event.event_date)}${escapeHtml(span)}</span>
-    <span><span class="badge">${escapeHtml(LABEL[event.event_type] || event.event_type)}</span></span>
+    <span><span class="badge">${escapeHtml(eventLabel(event.event_type))}</span></span>
     <span class="name">${subject}</span>
     <span class="name muted hide-narrow">${escapeHtml(event.group_name || event.group_code || "")}</span>
     <span class="num hide-narrow ${signClass(event.sector_share)}">${event.sector_share === null || event.sector_share === undefined

@@ -214,6 +214,29 @@ Base URL: `/api/v1`
 - `period_id`를 생략하면 가장 최근 계산 기간이다.
 - `UNMAPPED` 그룹이 존재하면 목록 마지막에 포함된다(`group_code = "UNMAPPED"`).
 
+### 3.3 `GET /sectors/market-caps`
+
+섹터 전체의 **기간 말 시가총액**. 화면은 이 값으로 이동평균과 그 상승률·순위·이격도를 만든다([03 §14.3~14.4](03-metrics-spec.md#143-이동평균)). 단일 섹터의 시가·고가·저가·종가는 [§5.3](#53-get-sectorsgroup_codemarket-cap)이다.
+
+```json
+{
+  "meta": { "universe": "KR_COMMON", "scheme": "WI26", "period": "W", "currency": "KRW",
+            "from": "2026-W30", "to": "2026-W38", "group_count": 26, "calc_version": "1.2.0", "stale": false },
+  "data": [
+    { "group_code": "WI620", "name": "반도체", "color": "#3B6FD4",
+      "points": [
+        { "period_id": "2026-W37", "close": 2977591039595888, "member_cnt": 163 },
+        { "period_id": "2026-W38", "close": 3011884550219315, "member_cnt": 163 }
+      ] }
+  ]
+}
+```
+
+- `close`는 [§5.3](#53-get-sectorsgroup_codemarket-cap)의 `close`와 같은 값이다(기간 마지막 거래일의 섹터 시총, 시장 통화 단위 정수).
+- 그룹이 없는 기간은 점을 **생략**한다. 순위를 갖지 않는 `UNMAPPED`는 아예 싣지 않는다.
+- 이동평균은 주지 않는다. 화면이 계산하며, 구간 앞 기간이 필요하면 `from`을 앞당겨 받는다([06 §3.5](06-ui-spec.md#35-이동평균-기준)).
+- 섹터 일별 시총을 아직 한 번도 쓰지 않았으면 409 `NOT_AVAILABLE`다.
+
 ## 4. 시장 요약 API
 
 ### 4.1 `GET /market/summary?universe=&period=&period_id=`
@@ -363,6 +386,7 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 | --- | --- | --- |
 | `universe` | 필수 | 시장을 정한다 |
 | `type` | 전체 | `LISTING`, `DELISTING`, `RECLASS`, `SHARE_CHANGE`, `CORP_ACTION`, `DATA_GAP` |
+| `group_code` | 전체 | 그 섹터의 사건만. 섹터 시가총액 차트의 표시가 쓴다 ([06 §5.4](06-ui-spec.md#54-섹터-시가총액-차트)) |
 | `from` / `to` | 전체 | 사건 날짜 구간 (구간 사건은 종료일로 비교) |
 | `min_sector_share` | 0 | 섹터 시총 대비 비중 하한 |
 | `sort` | `sector_share` | `sector_share`(영향이 큰 순) 또는 `date` |
@@ -382,7 +406,8 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 ```
 
 - `sector_share`는 사건 시점 섹터 시총 대비 사건 규모다. 이 값으로 정렬하면 섹터 흐름에 영향이 큰 사건부터 나온다.
-- 시장 단위 사건(데이터 공백 등)은 `ticker`와 `group_code`가 `null`이다.
+- 시장 단위 사건(데이터 공백 등)은 `ticker`와 `group_code`가 `null`이다. 그래서 `group_code`로 거르면 빠진다.
+- 사건의 `group_code`는 시장의 **배타 스킴**(KR WI26 · US GICS) 코드다. 테마 스킴을 보는 중이면 걸리는 사건이 없다.
 - `source`는 그 사건을 만든 값의 수집 출처다. 유형별 값과 뜻은 [07 §11.2](07-price-ingestion.md#112-특이사항)에 있다. 한 사건에 출처가 둘 이상이면 쉼표로 잇는다. 아직 다시 뽑지 않은 사건은 `null`이다.
 
 ## 7. 캐싱
@@ -390,7 +415,7 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 | 엔드포인트 | 조건 | `Cache-Control` |
 | --- | --- | --- |
 | `/meta/*` | — | `max-age=3600` |
-| `/sectors/ranks`, `/sectors/returns` | 구간이 확정 기간만 포함 | `max-age=86400` |
+| `/sectors/ranks`, `/sectors/returns`, `/sectors/market-caps` | 구간이 확정 기간만 포함 | `max-age=86400` |
 | 〃 | 구간에 잠정 기간 포함 | `max-age=300` |
 | `/sectors/{g}/breakdown` | 확정 기간 | `max-age=86400` |
 | `/sectors/{g}/history`, `/sectors/{g}/market-cap` | `/sectors/ranks`와 같다 | 〃 |
