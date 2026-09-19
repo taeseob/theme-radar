@@ -23,10 +23,20 @@ def add_prices(con, sid, prices, shares=1_000_000, cap=True):
         [(sid, d, p, p, shares, p * shares if cap else None, NOW) for d, p in prices.items()])
 
 
+def add_index(con, market="KR", index_code="KOSPI"):
+    """거래일마다 10씩 오르는 지수. 시가는 종가 −5, 고가 +8, 저가 −12이다."""
+    con.executemany(
+        "INSERT INTO market_index_daily (market_code, index_code, trade_date, open, high, low, close, source) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'TEST')",
+        [(market, index_code, d, 2400 + i * 10 - 5, 2400 + i * 10 + 8, 2400 + i * 10 - 12, 2400 + i * 10)
+         for i, d in enumerate(DAYS)])
+
+
 def build_market(con) -> dict[str, int]:
     """A: 계속 거래 · B: 기간 중 신규상장 · C: 기간 중 폐지 · D: 시총 없음 · E: 기간 말 거래정지"""
     with transaction(con):
         con.executemany("INSERT INTO trading_calendar VALUES ('KR', ?)", [(d,) for d in DAYS])
+        add_index(con)
         con.executemany("INSERT INTO classification_group (scheme_code, group_code, group_name, group_name_en, "
                         "sort_order, color_hex, valid_from) VALUES ('WI26', ?, ?, ?, ?, ?, '2020-01-01')",
                         [("WI620", "반도체", "Semiconductors", 1, "#2a78d6"),

@@ -70,6 +70,17 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
   background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 6px;
   font-size: 12px; line-height: 1.55; box-shadow: 0 2px 10px rgba(0, 0, 0, .12); }
 .spark { height: 64px; }
+/* 범프 차트 오른쪽의 시장 지수·섹터 캔들 (docs/06 §3.6). 높이는 왼쪽 차트를 따라간다 */
+.bump-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: stretch; }
+.bump-main { min-width: 0; }
+.side-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.side-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 분류 스킴마다 섹터 이름 길이가 달라, 고정 폭이어야 머리줄이 한 줄에 들어온다 */
+.side-head select { width: 116px; }
+.side-chart { margin: 0; display: flex; flex-direction: column; flex: 1 1 0; min-height: 130px; min-width: 0; }
+.side-chart[hidden] { display: none; }
+.side-chart figcaption { font-size: 11px; color: var(--ink-2); margin-bottom: 2px; }
+.mini-chart { flex: 1 1 auto; min-height: 0; position: relative; }
 /* 드릴다운의 섹터 시가총액 차트 (docs/06 §5.4). 높이에 x축 라벨 두 줄 자리까지 넣는다 */
 .cap-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
 .sub-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -160,7 +171,11 @@ th, td { border-bottom: 1px solid var(--grid); padding: 4px 8px; text-align: rig
 th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
 thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); }
 
-@media (max-width: 1280px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 1280px) {
+  .split { grid-template-columns: 1fr; }
+  .bump-split { grid-template-columns: 1fr; }
+  .side-chart { min-height: 200px; }
+}
 /* 고정 폭이 화면을 넘지 않게 줄인다. 특징 칸은 배지 하나만 남고 나머지는 잘린다 (드릴다운에서 전부 본다) */
 @media (max-width: 1080px) {
   #snapshot .row { grid-template-columns: 150px minmax(0, 1fr) 80px 72px 76px 56px 56px 52px 120px; }

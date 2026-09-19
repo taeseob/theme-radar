@@ -268,6 +268,29 @@ Base URL: `/api/v1`
 
 - `universe_return`은 자체 산출값이며 공식 지수 수익률이 아니다. 응답에 `"disclaimer"` 문자열을 포함해 UI에 그대로 노출한다.
 
+### 4.2 `GET /market/index`
+
+시장 지수의 기간별 시가·고가·저가·종가. 화면 오른쪽의 지수 캔들([06 §3.6](06-ui-spec.md#36-시장-지수와-섹터-캔들))이 쓴다. 계산 정의는 [03 §15](03-metrics-spec.md#15-시장-지수)다.
+
+**파라미터**: `universe`, `period`, `from`, `to` (`scheme`은 쓰지 않는다)
+
+```json
+{
+  "meta": { "universe": "KR_COMMON", "period": "W", "currency": "KRW", "from": "2026-W34", "to": "2026-W38",
+            "index_code": "KOSPI", "name": "KOSPI", "calc_version": "1.2.0", "stale": false },
+  "data": [
+    { "period_id": "2026-W37", "end_date": "2026-09-11", "is_provisional": false,
+      "open": 6910.78, "high": 7171.52, "low": 6802.5, "close": 6909.91, "trading_days": 5 }
+  ]
+}
+```
+
+- 시장마다 지수 하나를 준다: KR `KOSPI`, US `SPX`(S&P 500). `universe`로 시장을 정한다.
+- 값은 **지수 포인트**다. `meta.currency`는 시장 통화지만 지수 값에는 적용되지 않는다.
+- `open`은 기간 첫 거래일의 시가다. 섹터 시가총액([§5.3](#53-get-sectorsgroup_codemarket-cap))과 달리 직전 기간 종가가 아니다.
+- `end_date`는 그 기간에 지수 일봉이 있는 마지막 날이다. `trading_days`는 그 기간에 더한 일봉 수다.
+- 지수 일봉이 하나도 없으면 409 `NOT_AVAILABLE`이며, 메시지에 실행할 명령(`prices index --market KR`)을 담는다.
+
 ## 5. 드릴다운 API
 
 ### 5.1 `GET /sectors/{group_code}/breakdown`
@@ -415,6 +438,7 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 | 엔드포인트 | 조건 | `Cache-Control` |
 | --- | --- | --- |
 | `/meta/*` | — | `max-age=3600` |
+| `/market/summary`, `/market/index` | `/sectors/ranks`와 같다 | 〃 |
 | `/sectors/ranks`, `/sectors/returns`, `/sectors/market-caps` | 구간이 확정 기간만 포함 | `max-age=86400` |
 | 〃 | 구간에 잠정 기간 포함 | `max-age=300` |
 | `/sectors/{g}/breakdown` | 확정 기간 | `max-age=86400` |

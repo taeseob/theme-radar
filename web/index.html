@@ -55,8 +55,27 @@
         <button type="button" id="table-toggle" class="ghost">표로 보기</button>
       </div>
     </div>
-    <div class="chart-scroll" id="bump-wrap"><div id="bump" class="chart"></div></div>
-    <div id="bump-table" class="table-wrap" hidden></div>
+    <div class="bump-split">
+      <div class="bump-main">
+        <div class="chart-scroll" id="bump-wrap"><div id="bump" class="chart"></div></div>
+        <div id="bump-table" class="table-wrap" hidden></div>
+      </div>
+      <aside class="side-panel" id="side-panel">
+        <div class="side-head">
+          <label class="small">섹터 <select id="side-group"></select></label>
+          <label class="small"><input type="checkbox" id="side-ma-show"> 이동평균</label>
+          <label class="small"><input type="number" id="side-ma-len" min="2" max="52" step="1" inputmode="numeric"> 기간</label>
+        </div>
+        <figure class="side-chart" id="side-sector-block" hidden>
+          <figcaption id="side-sector-title"></figcaption>
+          <div id="side-sector" class="mini-chart" role="img" aria-label="섹터 시가총액 캔들"></div>
+        </figure>
+        <figure class="side-chart">
+          <figcaption id="side-index-title">시장 지수</figcaption>
+          <div id="side-index" class="mini-chart" role="img" aria-label="시장 지수 캔들"></div>
+        </figure>
+      </aside>
+    </div>
     <p class="hint" id="bump-hint"></p>
   </section>
 

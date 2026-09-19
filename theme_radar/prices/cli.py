@@ -33,6 +33,7 @@ def add_commands(commands: argparse._SubParsersAction, open_db) -> None:
     restate.add_argument("--only", nargs="+", required=True, metavar="TICKER")
     market_parser("shares", "가격은 받지 않고 상장주식수 관측치 수집·재계산·검증·특이사항만 전 구간으로 다시 한다", _shares)
     market_parser("events", "아무것도 받지 않고 이미 쌓인 수집 데이터에서 특이사항만 다시 뽑는다", _events)
+    market_parser("index", "거래일 캘린더와 시장 지수 일봉만 다시 받는다", _index)
 
 
 def _universe(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
@@ -90,6 +91,16 @@ def _shares(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
         validate.run_checks(ctx)
         events.build_events(ctx)
         _report(ctx, run)
+    return _exit_code(run)
+
+
+def _index(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
+    """지수 일봉만 받는다 (docs/07 §12). 종목 시세는 건드리지 않아 한 번 요청으로 끝난다."""
+    con = open_db(args, config)
+    with run_job(con, "prices-index", args.market) as run:
+        ctx = build_context(con, run, config, args.market, full=True, save_raw=not args.no_raw)
+        _prepare(ctx)
+        MARKET_MODULES[args.market].update_calendar(ctx)
     return _exit_code(run)
 
 

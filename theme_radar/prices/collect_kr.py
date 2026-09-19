@@ -44,12 +44,20 @@ def update_universe(ctx: Context) -> list[fdr_krx.Delisting]:
     return delistings
 
 
+INDEX_CODE = "KOSPI"
+
+
 def update_calendar(ctx: Context) -> None:
-    bars = naver.fetch_sise(ctx.fetcher, "KOSPI", ctx.start, ctx.today)
-    days = [b.trade_date for b in bars if b.trade_date != ctx.today or ctx.market_closed]
+    """거래일 캘린더와 시장 지수 일봉을 KOSPI 지수 일봉 하나로 함께 만든다 (docs/07 §12)."""
+    bars = naver.fetch_sise(ctx.fetcher, INDEX_CODE, ctx.start, ctx.today)
+    closed = [b for b in bars if b.trade_date != ctx.today or ctx.market_closed]
+    days = [b.trade_date for b in closed]
     with transaction(ctx.con):
         store.replace_trading_days(ctx.con, "KR", days, ctx.start)
-    ctx.log(f"거래일 {len(days)}일 ({days[0]} ~ {days[-1]})")
+        # 거래가 없던 날은 시가·고가·저가가 0이라 캔들을 만들 수 없다. 그날은 빈칸으로 둔다
+        stored = store.replace_index_bars(ctx.con, "KR", INDEX_CODE, [b for b in closed if not b.no_trade],
+                                          "NAVER_SISE", ctx.start)
+    ctx.log(f"거래일 {len(days)}일 ({days[0]} ~ {days[-1]}), {INDEX_CODE} 지수 {stored}일")
 
 
 def targets(ctx: Context, codes: list[str] | None = None) -> list[Target]:

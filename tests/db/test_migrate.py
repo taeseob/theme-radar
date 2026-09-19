@@ -17,7 +17,7 @@ EXPECTED_TABLES = {
     "market", "universe", "security", "universe_membership",
     "classification_scheme", "classification_group", "security_group_map",
     # 원천
-    "trading_calendar", "price_daily", "shares_observation", "corporate_action", "special_event",
+    "trading_calendar", "market_index_daily", "price_daily", "shares_observation", "corporate_action", "special_event",
     # 파생
     "period_calendar", "security_period_return", "universe_period_stat",
     "group_period_stat", "group_member_contribution", "group_daily_cap",

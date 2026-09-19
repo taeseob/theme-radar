@@ -35,6 +35,7 @@ erDiagram
     market ||--o{ universe : has
     market ||--o{ security : lists
     market ||--o{ trading_calendar : has
+    market ||--o{ market_index_daily : has
     market ||--o{ period_calendar : has
     market ||--o{ classification_scheme : scopes
     market ||--o{ special_event : records
@@ -161,6 +162,15 @@ AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 - `special_event.source`는 그 사건을 만든 값의 수집 출처다. 원천 테이블의 출처 코드를 그대로 쓴다 ([07 §11.2](07-price-ingestion.md#112-특이사항)).
 - `special_event`는 `(market_code, event_type, security_id, event_date)`로 한 번만 기록한다. 시장 단위 사건은 `security_id`가 `NULL`이므로, 유니크 인덱스에서 `IFNULL(security_id, 0)`을 쓴다.
 
+### 4.4 market_index_daily
+
+키: `(market_code, index_code, trade_date)`
+
+- 시장 지수 일봉이다. 거래일 캘린더를 만들며 받아 오던 지수 시계열(KR 네이버 `KOSPI`, US yfinance `^GSPC`)의 시가·고가·저가·종가를 남긴 것이다([07 §12](07-price-ingestion.md#12-시장-지수-일봉)). 시장마다 지수 하나를 쓴다: KR `KOSPI`, US `SPX`.
+- 값은 **지수 포인트**다. 통화 단위가 없고, 분할·배당 조정도 없어 받은 값을 그대로 둔다.
+- 우리가 계산하는 유니버스 수익률과는 다른 값이다. 구성 종목도 산출식도 거래소의 것이며, 섹터 흐름을 볼 때 **시장 전체의 배경**으로만 쓴다([06 §3.6](06-ui-spec.md#36-시장-지수와-섹터-캔들)).
+- 기간 단위 캔들 값은 저장하지 않고 API가 조회할 때 만든다([05 §4.2](05-api-spec.md#42-get-marketindex)).
+
 ## 5. 파생(집계) 테이블
 
 계산 정의는 [03](03-metrics-spec.md), 계산 순서와 재계산 정책은 [04](04-pipeline.md)를 따른다. `calc_version`, `calculated_at`은 어떤 로직으로 언제 산출한 값인지 추적한다.
@@ -213,7 +223,7 @@ AND (security.delisting_date IS NULL OR security.delisting_date > :as_of)
 
 드릴다운의 섹터 시가총액 차트 전용([06 §5.4](06-ui-spec.md#54-섹터-시가총액-차트)). 거래일마다 그날의 유니버스 구성원과 분류 매핑으로 더한 그룹 시가총액과 더한 종목 수다. 정의는 [03 §14](03-metrics-spec.md#14-섹터-시가총액)에 있다.
 
-- 일별 값만 저장한다. 기간 단위 시가·고가·저가·종가는 API가 조회할 때 만들고([05 §5.3](05-api-spec.md#53-get-sectorsgroup_codemarket-cap)), 이동평균은 화면이 계산한다([§9](#9-결정-기록) S-17).
+- 일별 값만 저장한다. 기간 단위 시가·고가·저가·종가는 API가 조회할 때 만들고([05 §5.3](05-api-spec.md#53-get-sectorsgroup_codemarket-cap)), 이동평균은 화면이 계산한다([§9](#9-결정-기록) S-17). 시장 지수(`market_index_daily`)도 같은 규약이다.
 - 미매핑 종목은 `UNMAPPED` 행으로 더한다. 배타 스킴에서 한 날짜의 그룹 합은 그날 유니버스 시총과 같다.
 - 행 수는 (그룹 수 + 1) × 거래일 수다. 2025-01 이후 KR 11,205행 · US 5,080행이다.
 
@@ -315,4 +325,5 @@ KR,005930,2026-01-09,71200,1.0,5969782550,12345678,NORMAL
 | S-14 | 분류 매핑 이력 | 현재 스냅샷 하나를 전 기간에 적용한다. 과거 이력은 만들지 않는다. 다시 적재하면 스킴의 매핑을 통째로 바꾸고 재계산을 요청한다 | 매핑이 실제로 바뀔 때 이력 처리를 정한다 |
 | S-16 | 미매핑 순위 | `UNMAPPED`는 순위를 받지 않는다(`rank_ret` NULL 허용, 마이그레이션 0002) | 분류 체계의 섹터가 아니다. 기여도 가산성을 위해 행은 남긴다 |
 | S-17 | 섹터 시가총액 저장 (2026-09-16) | 일별 그룹 시총만 `group_daily_cap`에 저장한다. 기간 캔들 값은 API가 만들고, 이동평균은 저장하지 않고 화면이 계산한다 | 요청 때마다 종목 시세를 더하면 104주 구간에서 KR 2,500종목 × 520거래일을 읽는다. 기간 값은 일별 값의 처음·끝·최소·최대라 조회 때 만들어도 싸다. 이동평균은 사용자가 기간을 고르므로 저장할 값이 정해지지 않는다(사용자 결정) |
+| S-18 | 시장 지수 저장 (2026-09-19) | 거래일 캘린더를 만들며 이미 받던 지수 일봉을 `market_index_daily`(마이그레이션 0005)에 남긴다. 기간 캔들 값은 API가 만든다 | 화면 오른쪽에 시장 배경을 두려면 지수가 필요한데(06 §3.6), 새 출처를 붙일 필요가 없다. 날짜만 쓰고 버리던 값을 남기는 것이라 수집 비용이 늘지 않는다 |
 | S-15 | 섹터 색상 | 8색 범주형 팔레트를 산업 계열 단위로 배정한다 (`data/group_colors.csv`) | 검증된 8색을 넘는 색을 만들면 색각 이상에서 구분되지 않는다. 섹터 식별은 라벨과 호버가 맡는다 |

@@ -96,7 +96,7 @@ CREATE INDEX ix_sgm_asof ON security_group_map (scheme_code, valid_from, valid_t
 
 -- ============================================================ 원천 시계열
 
--- 거래일만 저장한다. 지수 시계열에서 만든다 (docs/07 §12 11항)
+-- 거래일만 저장한다. 지수 시계열에서 만든다 (docs/07 §12). 그 지수 일봉은 market_index_daily에 남는다
 CREATE TABLE trading_calendar (
     market_code TEXT NOT NULL REFERENCES market (market_code),
     trade_date  TEXT NOT NULL CHECK (trade_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),

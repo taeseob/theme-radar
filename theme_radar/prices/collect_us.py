@@ -66,11 +66,19 @@ def update_universe(ctx: Context) -> None:
     ctx.log(f"유니버스: 현재 {len(current)}, 편입 기간 {len(intervals)}, 티커 변경 {renames or '없음'}, 라인 수 {low}~{high}")
 
 
+INDEX_CODE = "SPX"
+INDEX_SYMBOL = "^GSPC"
+
+
 def update_calendar(ctx: Context) -> None:
-    days = [d for d in yf.fetch_trading_days(ctx.start, ctx.raw_dir) if d != ctx.today or ctx.market_closed]
+    """거래일 캘린더와 시장 지수 일봉을 S&P 500 지수 일봉 하나로 함께 만든다 (docs/07 §12)."""
+    bars = [b for b in yf.fetch_index(INDEX_SYMBOL, ctx.start, ctx.raw_dir)
+            if b.trade_date != ctx.today or ctx.market_closed]
+    days = [b.trade_date for b in bars]
     with transaction(ctx.con):
         store.replace_trading_days(ctx.con, "US", days, ctx.start)
-    ctx.log(f"거래일 {len(days)}일 ({days[0]} ~ {days[-1]})")
+        stored = store.replace_index_bars(ctx.con, "US", INDEX_CODE, bars, "YFINANCE", ctx.start)
+    ctx.log(f"거래일 {len(days)}일 ({days[0]} ~ {days[-1]}), {INDEX_CODE} 지수 {stored}일")
 
 
 def targets(ctx: Context, since: str, tickers: list[str] | None = None) -> list[Target]:

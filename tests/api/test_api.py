@@ -145,6 +145,24 @@ def test_market_cap_before_daily_caps_are_written(client, con):
         assert response.status_code == 409 and response.json()["error"]["code"] == "NOT_AVAILABLE"
 
 
+def test_market_index_candles(client):
+    """지수 캔들의 시가는 기간 첫 거래일의 시가다. 섹터 시가총액 캔들(직전 기간 종가)과 다르다 (docs/03 §15)."""
+    body = get(client, "/api/v1/market/index", universe="KR_COMMON").json()
+    assert body["meta"]["index_code"] == "KOSPI" and body["meta"]["name"] == "KOSPI"
+    closed, provisional = body["data"]
+    assert closed == {"period_id": CLOSED, "end_date": "2025-01-10", "is_provisional": False,
+                      "open": 2415, "high": 2468, "low": 2408, "close": 2460, "trading_days": 5}
+    assert (provisional["open"], provisional["close"], provisional["is_provisional"]) == (2465, 2510, True)
+
+
+def test_market_index_before_it_is_collected(client, con):
+    with transaction(con):
+        con.execute("DELETE FROM market_index_daily")
+    response = client.get("/api/v1/market/index", params={"universe": "KR_COMMON"})
+    assert response.status_code == 409 and response.json()["error"]["code"] == "NOT_AVAILABLE"
+    assert "prices index --market KR" in response.json()["error"]["message"]
+
+
 def test_securities_search(client):
     hits = get(client, "/api/v1/securities/search", universe="KR_COMMON", q="에이").json()["data"]
     assert [h["ticker"] for h in hits] == ["000001"] and hits[0]["group_code"] == "WI620"

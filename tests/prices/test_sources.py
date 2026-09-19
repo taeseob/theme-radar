@@ -1,7 +1,9 @@
 """출처 응답 파서. 실측 응답 형식을 줄여 옮긴 예시로 확인한다."""
 import json
 
-from theme_radar.prices.sources import daum, kind, naver, sec, wiki
+import pandas as pd
+
+from theme_radar.prices.sources import daum, kind, naver, sec, wiki, yf
 
 
 def test_parse_sise_is_not_json():
@@ -55,3 +57,13 @@ def test_parse_sec_shares_dedupes_amendments_and_detects_classes():
     body = json.dumps({"units": {"shares": [fact("2025-09-30", 100, "a1", "2025-10-20"), fact("2025-09-30", 50, "a1", "2025-10-20")]}}).encode()
     assert sec.parse_shares(body)[1] is True
     assert sec.parse_shares(b'{"units": {"shares": {}}}') == ([], False)
+
+
+def test_frame_to_index_bars_skips_empty_days():
+    """지수 일봉은 거래일 캘린더의 원천이기도 하다. 값이 빈 날은 캔들을 만들 수 없어 건너뛴다 (docs/07 §12)."""
+    index = pd.to_datetime(["2026-09-14", "2026-09-15"])
+    df = pd.DataFrame({("Open", "^GSPC"): [6500.0, float("nan")], ("High", "^GSPC"): [6560.0, 6600.0],
+                       ("Low", "^GSPC"): [6480.0, 6500.0], ("Close", "^GSPC"): [6540.0, 6580.0]}, index=index)
+    bars = yf.frame_to_index_bars(df, "^GSPC")
+    assert [(b.trade_date, b.open, b.high, b.low, b.close) for b in bars] == [("2026-09-14", 6500.0, 6560.0, 6480.0, 6540.0)]
+    assert yf.frame_to_index_bars(pd.DataFrame(), "^GSPC") == []

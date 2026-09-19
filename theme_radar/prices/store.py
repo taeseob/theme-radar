@@ -16,6 +16,22 @@ def replace_trading_days(con: sqlite3.Connection, market: str, days: list[str], 
     con.executemany("INSERT INTO trading_calendar (market_code, trade_date) VALUES (?, ?)", [(market, d) for d in days if d >= since])
 
 
+def replace_index_bars(con: sqlite3.Connection, market: str, index_code: str, bars, source: str, since: str) -> int:
+    """시장 지수 일봉을 since 이후 구간만 다시 쓴다 (docs/07 §12).
+
+    지수는 소급 수정이 없어 받은 값을 그대로 둔다. 값이 어긋난 날(고가 < 종가 등)은 넣지 않는다.
+    바로잡을 근거가 없는 한 날이라 버리고, 그 자리는 차트에서 빈다.
+    """
+    rows = [(market, index_code, b.trade_date, b.open, b.high, b.low, b.close, source) for b in bars
+            if b.trade_date >= since and min(b.open, b.high, b.low, b.close) > 0
+            and b.low <= min(b.open, b.close) and max(b.open, b.close) <= b.high]
+    con.execute("DELETE FROM market_index_daily WHERE market_code = ? AND index_code = ? AND trade_date >= ?",
+                (market, index_code, since))
+    con.executemany("INSERT INTO market_index_daily (market_code, index_code, trade_date, open, high, low, close, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    return len(rows)
+
+
 def trading_days(con: sqlite3.Connection, market: str) -> list[str]:
     return [r[0] for r in con.execute("SELECT trade_date FROM trading_calendar WHERE market_code = ? ORDER BY trade_date", (market,))]
 

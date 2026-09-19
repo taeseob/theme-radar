@@ -2,7 +2,7 @@
 /** 화면 조립 (docs/06). 상태는 URL이 단일 출처이고, 상태가 바뀔 때마다 필요한 부분만 다시 그린다. */
 import { ApiError, get } from "./api.js";
 import * as bump from "./bump-chart.js";
-import * as capChart from "./cap-chart.js";
+import * as candleChart from "./candle-chart.js";
 import * as drilldown from "./drilldown.js";
 import * as events from "./events.js";
 import { escapeHtml } from "./format.js";
@@ -25,6 +25,7 @@ const cache = {
   /** @type {any} */ calendar: null, /** @type {any} */ ranks: null, /** @type {any} */ history: null,
   /** @type {Map<string, any>|null} */ caps: null,     // 섹터별 이동평균·상승률·이격도 (ma.js build)
   capsError: "",
+  sideKey: "",                                        // 오른쪽 패널을 마지막으로 그린 상태 (같으면 다시 그리지 않는다)
   /** @type {Record<string, string>|null} */ state: null,
 };
 let requestSeq = 0;
@@ -142,12 +143,17 @@ function drawBump(current, periodId) {
   }
   if (asTable) $("bump-table").innerHTML = bump.tableHtml(payload, current.mode, current.basis);
   else bump.render($("bump"), payload, { mode: current.mode, basis: current.basis, maLength: length,
-                                         currency: cache.currency, calendar: cache.calendar.map, onPick: pick });
+                                         currency: cache.currency, calendar: cache.calendar.map,
+                                         focused: focusSet(current), onPick: pick, onFocus: toggleFocus });
   const others = payload.data.others_count;
+  const focused = focusSet(current);
   $("bump-hint").innerHTML = "선이나 점에 마우스를 올리면 그 기간의 값이 뜨고, 클릭하면 아래에 섹터 상세가 열린다."
+    + " 더블클릭하면 그 섹터만 또렷해지고, 여러 번 하면 함께 본다."
     + " 차트 오른쪽 아래 모서리를 끌면 높이가 바뀐다."
     + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.</span>` : "")
-    + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "");
+    + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "")
+    + (focused.size ? ` <button type="button" class="ghost" id="focus-clear">강조 ${focused.size}개 해제</button>` : "");
+  if (focused.size) $("focus-clear").addEventListener("click", () => state.update({ focus: "" }));
 }
 
 /** 선택 기간의 섹터별 이동평균·이격도. 시총을 못 받았으면 null이고, 표는 그 칸을 비운다 */
@@ -219,14 +225,63 @@ async function drawMarketCap(current, periodId) {
           { ...base, scheme: current.scheme, from: periods[0].period_id, to: cache.calendar.to }),
       groupEvents(current),
     ]);
-    capChart.render(container, payload, { periods, visible: cache.calendar.rows.length, kind: current.cap,
-                                          maLength: current.ma ? maLength(current.ma_n) : 0, selected: periodId,
-                                          color: cache.groups.get(current.group)?.color, events: sectorEvents });
+    candleChart.render(container, payload, { periods, visible: cache.calendar.rows.length, kind: current.cap,
+                                             maLength: current.ma ? maLength(current.ma_n) : 0, selected: periodId,
+                                             color: cache.groups.get(current.group)?.color, events: sectorEvents,
+                                             scale: "cap", label: "시가총액" });
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     const text = error.status === 409 ? "섹터 시가총액이 아직 계산되지 않았습니다." : "섹터 시가총액을 불러오지 못했습니다.";
-    capChart.message(container, `<p class="empty">${escapeHtml(text)}<br><span class="muted">${escapeHtml(error.message)}</span></p>`);
+    candleChart.message(container, `<p class="empty">${escapeHtml(text)}<br><span class="muted">${escapeHtml(error.message)}</span></p>`);
   }
+}
+
+// ── 오른쪽 패널 (docs/06 §3.6) ────────────────────────────────────────────────
+// 시장 지수 캔들을 늘 두고, 섹터를 고르면 그 위에 섹터 시가총액 캔들을 함께 둔다.
+// 아래의 섹터 선택(드릴다운)과는 따로 움직인다.
+
+function fillSideGroups(current) {
+  const select = sel("side-group");
+  const items = [{ value: "", label: "지수만" },
+                 ...[...cache.groups.values()].map((g) => ({ value: g.group_code, label: g.name }))];
+  fillSelect(select, items, current.side);
+  if (select.value !== current.side) {                 // 다른 스킴의 섹터였으면 지수만 본다
+    select.value = "";
+    state.update({ side: "" }, { silent: true });
+    current.side = "";
+  }
+}
+
+/** 받아서 그리고 응답을 돌려준다. 못 받으면 그 차트 자리에만 안내 문구를 둔다 @returns {Promise<any>} */
+async function drawSideChart(container, path, params, opts) {
+  try {
+    const payload = await get(path, params);
+    candleChart.render(container, payload, opts);
+    return payload;
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    candleChart.message(container, `<p class="empty">${escapeHtml(error.message)}</p>`);
+    return null;
+  }
+}
+
+async function drawSidePanel(current) {
+  fillSideGroups(current);
+  const periods = cache.calendar.extended;
+  const shared = { periods, visible: cache.calendar.rows.length, kind: "candle", compact: true,
+                   maLength: current.side_ma ? maLength(current.side_ma_n) : 0 };
+  const base = { universe: current.universe, period: current.period, from: periods[0].period_id, to: cache.calendar.to };
+  const block = $("side-sector-block");
+  block.hidden = !current.side;
+  const jobs = [drawSideChart($("side-index"), "/market/index", base, { ...shared, scale: "index", label: "지수" })];
+  if (current.side) {
+    $("side-sector-title").textContent = `${cache.groups.get(current.side)?.name || current.side} 시가총액`;
+    jobs.push(drawSideChart($("side-sector"), `/sectors/${encodeURIComponent(current.side)}/market-cap`,
+                            { ...base, scheme: current.scheme }, { ...shared, scale: "cap", label: "시가총액",
+                                                                   color: cache.groups.get(current.side)?.color }));
+  }
+  const [marketIndex] = await Promise.all(jobs);
+  $("side-index-title").textContent = marketIndex ? `${marketIndex.meta.name} 지수` : "시장 지수";
 }
 
 async function drawEvents(current) {
@@ -259,16 +314,18 @@ async function refresh(force = false) {
       // 시장이 바뀌면 섹터·기간 선택은 의미를 잃는다. 스킴만 기본값으로 채운 경우는 선택을 유지한다
       const moved = universe.universe !== current.universe;
       Object.assign(current, { universe: universe.universe, scheme },
-                    moved ? { group: "", pid: "" } : {});
-      state.update({ universe: current.universe, scheme, ...(moved ? { group: "", pid: "" } : {}) }, { silent: true });
+                    moved ? { group: "", pid: "", focus: "" } : {});
+      state.update({ universe: current.universe, scheme,
+                     ...(moved ? { group: "", pid: "", focus: "" } : {}) }, { silent: true });
     }
 
     if (reload) {
       const limit = MAX_PERIODS[current.period] || 260;
       const count = Math.min(Number(current.range) || 26, limit);
       // 이동평균은 화면이 계산한다. 구간 첫 기간부터 상승률이 있도록 앞 기간을 더 받아 둔다 (docs/03 §14.3)
+      const lead = Math.max(maLength(current.ma_n), maLength(current.side_ma_n));
       const extended = (await get("/meta/periods", { universe: current.universe, period: current.period,
-                                                     last: Math.min(count + maLength(current.ma_n), limit) })).data;
+                                                     last: Math.min(count + lead, limit) })).data;
       if (outdated()) return;
       if (!extended.length) {
         emptyMessage($("bump"), "선택한 구간에 계산된 데이터가 없습니다.");
@@ -297,6 +354,14 @@ async function refresh(force = false) {
                                                    period: current.period, period_id: periodId });
     if (outdated()) return;
     $("market-summary").innerHTML = snapshot.summaryHtml(summary.data, summary.data.period_id);
+
+    const sideKey = [current.universe, current.scheme, current.period, current.range, current.ma_n,
+                     current.side, current.side_ma, current.side_ma_n].join("|");
+    if (sideKey !== cache.sideKey) {
+      await drawSidePanel(current);
+      if (outdated()) return;
+      cache.sideKey = sideKey;
+    }
 
     await drawSnapshot(current, periodId);
     if (outdated()) return;
@@ -336,6 +401,7 @@ function bindChartHeight() {
     cancelAnimationFrame(pending);
     pending = requestAnimationFrame(() => {
       bump.repaint();            // 높이가 바뀌면 끝단 라벨을 다시 고른다
+      candleChart.resize();      // 오른쪽 패널은 왼쪽 차트와 높이를 맞춘다
       // 폭이 같이 바뀌었으면 창 크기 변화다. 사용자가 끈 높이만 기억한다
       const dragged = width === wrap.clientWidth;
       width = wrap.clientWidth;
@@ -355,6 +421,18 @@ function sortSnapshot(target) {
   return true;
 }
 
+/** 강조한 섹터 집합. 비어 있으면 모두 또렷하게 그린다 (docs/06 §3.2) */
+function focusSet(current) {
+  return new Set(String(current.focus || "").split(",").filter(Boolean));
+}
+
+/** 더블클릭은 강조를 넣고 뺀다. 마지막 하나를 빼면 다시 전부 또렷해진다 (docs/06 §3.2) */
+function toggleFocus(groupCode) {
+  const focused = focusSet(state.read());
+  if (!focused.delete(groupCode)) focused.add(groupCode);
+  state.update({ focus: [...focused].join(",") });
+}
+
 /** 같은 섹터를 다시 고르면 선택을 해제한다 (docs/06 §3.2) */
 function pick(groupCode, periodId) {
   const current = state.read();
@@ -364,12 +442,21 @@ function pick(groupCode, periodId) {
 
 function bind() {
   sel("universe").addEventListener("change", () =>
-    state.update({ universe: sel("universe").value, scheme: "", group: "", pid: "" }));
-  sel("scheme").addEventListener("change", () => state.update({ scheme: sel("scheme").value, group: "" }));
+    state.update({ universe: sel("universe").value, scheme: "", group: "", pid: "", focus: "", side: "" }));
+  sel("scheme").addEventListener("change", () =>
+    state.update({ scheme: sel("scheme").value, group: "", focus: "", side: "" }));
   sel("range").addEventListener("change", () => state.update({ range: sel("range").value, pid: "" }));
   sel("top").addEventListener("change", () => state.update({ top: sel("top").value }));
   sel("snapshot-sort").addEventListener("change", () => refresh(true));
   sel("event-type").addEventListener("change", () => state.update({ event_type: sel("event-type").value }));
+  sel("side-group").addEventListener("change", () => state.update({ side: sel("side-group").value }));
+  $("side-ma-show").addEventListener("change", (e) =>
+    state.update({ side_ma: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
+  $("side-ma-len").addEventListener("change", (e) => {
+    const input = /** @type {HTMLInputElement} */ (e.target);
+    input.value = String(maLength(input.value));
+    state.update({ side_ma_n: input.value });
+  });
   $("drilldown-close").addEventListener("click", () => state.update({ group: "" }));
   $("ma-show").addEventListener("change", (e) =>
     state.update({ ma: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
@@ -401,7 +488,7 @@ function bind() {
   bindChartHeight();
   window.addEventListener("resize", () => {
     drilldown.resize();
-    capChart.resize();
+    candleChart.resize();
   });
 }
 
@@ -418,6 +505,10 @@ function syncControls(current) {
   const maLen = /** @type {HTMLInputElement} */ ($("ma-len"));
   maShow.checked = Boolean(current.ma);
   maLen.value = String(maLength(current.ma_n));
+  const sideMaShow = /** @type {HTMLInputElement} */ ($("side-ma-show"));
+  const sideMaLen = /** @type {HTMLInputElement} */ ($("side-ma-len"));
+  sideMaShow.checked = Boolean(current.side_ma);
+  sideMaLen.value = String(maLength(current.side_ma_n));
   sel("range").value = current.range;
   sel("top").value = current.top;
   sel("event-type").value = current.event_type;
@@ -426,7 +517,7 @@ function syncControls(current) {
 theme.init(() => {
   bump.repaint();
   drilldown.repaint(cache.history);
-  capChart.repaint();
+  candleChart.repaint();
 });
 bind();
 state.onChange((current) => {

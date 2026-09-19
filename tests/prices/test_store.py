@@ -57,3 +57,22 @@ def test_shares_source_follows_as_of_rule_and_priority(con):
     assert shares_source(con, sid, "2026-03-09") == "DAUM_QUOTE"      # 그날 관측치가 없으면 앞의 최신 관측치
     assert shares_source(con, sid, "2026-03-03") == "SEC_DEI"
     assert shares_source(con, sid, "2026-03-01") is None
+
+
+def test_replace_index_bars_keeps_the_range_it_rewrites(con):
+    """지수는 소급 수정이 없어 값을 그대로 둔다. 값이 어긋난 날만 버린다 (docs/07 §12)."""
+    class Bar:
+        def __init__(self, trade_date, open_, high, low, close):
+            self.trade_date, self.open, self.high, self.low, self.close = trade_date, open_, high, low, close
+
+    bars = [Bar("2026-03-05", 100, 110, 95, 105), Bar("2026-03-06", 105, 90, 80, 85)]   # 둘째 날은 고가 < 시가
+    with transaction(con):
+        stored = store.replace_index_bars(con, "KR", "KOSPI", bars, "NAVER_SISE", "2026-03-01")
+    assert stored == 1
+    assert con.execute("SELECT trade_date, close FROM market_index_daily").fetchall() == [("2026-03-05", 105.0)]
+
+    # 다시 받으면 since 이후만 지우고 새로 쓴다. 앞 구간은 그대로다
+    with transaction(con):
+        store.replace_index_bars(con, "KR", "KOSPI", [Bar("2026-03-09", 106, 112, 104, 111)], "NAVER_SISE", "2026-03-06")
+    assert [r[0] for r in con.execute("SELECT trade_date FROM market_index_daily ORDER BY trade_date")] == [
+        "2026-03-05", "2026-03-09"]

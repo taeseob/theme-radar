@@ -10,12 +10,16 @@ const GRID = { left: 52, right: 156, top: 16, bottom: 68 };
 const LABEL_GAP = 13;                  // 끝단 라벨 한 줄이 차지하는 높이
 const TIP_GAP = 16;                    // 툴팁 상자와 마우스 포인터 사이 간격
 const SYMBOL_HIT = 8;                  // 이 거리 안이면 선이 아니라 점을 눌렀다고 본다
+const DIM = 0.15;                      // 강조하지 않은 섹터의 불투명도 (docs/06 §3.2)
+const CLICK_DELAY = 260;               // 더블클릭인지 가리려고 한 번 클릭의 처리를 미루는 시간(ms)
 
 /** @type {any} */
 let chart = null;
-/** @type {{payload: any, mode: string, basis: string, maLength: number, currency: string,
- *           calendar: Map<string, any>, onPick: Function}|null} */
+/** @type {{payload: any, mode: string, basis: string, maLength: number, currency: string, focused: Set<string>,
+ *           calendar: Map<string, any>, onPick: Function, onFocus: Function}|null} */
 let last = null;
+let clickTimer = 0;                    // 미뤄 둔 한 번 클릭. 더블클릭이 오면 취소한다
+let focusedByDblClick = false;         // 선 위 더블클릭이었으면 컨테이너의 구간 초기화를 건너뛴다
 /** @type {HTMLElement|null} */
 let tip = null;
 let pointer = [0, 0];                  // 마지막 마우스 위치 (차트 좌표계)
@@ -43,11 +47,13 @@ function values(line, periods, mode, color, surface) {
 /**
  * 끝단 라벨은 필수 식별 수단이라(docs/06 §8) 자리가 부족하면 섞어 쓰기보다 생략한다 (docs/06 §3.1).
  * 각 계열의 마지막 값을 픽셀로 바꿔, 위에서부터 최소 간격을 지키는 것만 고른다.
+ * 강조한 섹터가 있으면 그 섹터만 라벨을 단다. 옅은 선의 이름까지 적으면 강조가 묻힌다.
  */
-function fittingLabels(payload, mode, bounds, plotHeight) {
+function fittingLabels(payload, mode, bounds, plotHeight, focused) {
   const span = bounds.max - bounds.min || 1;
   const placed = [];
   for (const line of payload.data.series) {
+    if (focused.size && !focused.has(line.group_code)) continue;
     const point = [...line.points].reverse().find((p) => (mode === "rank" ? p.rank : p.return) !== null);
     if (!point) continue;
     const value = mode === "rank" ? point.rank : point.return * 100;
@@ -65,19 +71,22 @@ function fittingLabels(payload, mode, bounds, plotHeight) {
   return kept;
 }
 
-function buildSeries(payload, mode, labelled) {
+function buildSeries(payload, mode, labelled, focused) {
   const color0 = token("--muted");
   const surface = token("--surface") || "#fcfcfb";
   return payload.data.series.map((line) => {
     const color = seriesColor(line.color) || color0;
+    // 강조한 섹터가 있으면 나머지는 옅게 둔다. 옅은 선도 그대로 눌러 강조에 넣고 뺀다
+    const opacity = !focused.size || focused.has(line.group_code) ? 1 : DIM;
     return {
       id: line.group_code, name: line.name, type: "line", connectNulls: false,
-      symbol: "circle", symbolSize: 10, itemStyle: { color }, lineStyle: { width: 2, color },
+      symbol: "circle", symbolSize: 10, itemStyle: { color, opacity }, lineStyle: { width: 2, color, opacity },
       triggerLineEvent: true,            // 선 위에서도 마우스 이벤트를 받는다 (툴팁·클릭)
       emphasis: { focus: "series", lineStyle: { width: 3.5 } },
       blur: { lineStyle: { opacity: 0.2 }, itemStyle: { opacity: 0.2 }, endLabel: { opacity: 0.2 } },
       endLabel: { show: labelled.has(line.group_code), distance: 6, fontSize: 11, color: token("--ink-2"),
                   formatter: (params) => params.seriesName },
+      z: opacity === 1 ? 3 : 2,        // 강조한 선을 옅은 선 위에 둔다
       labelLayout: { moveOverlap: "shiftY", hideOverlap: true },
       data: values(line, payload.data.periods, mode, color, surface),
     };
@@ -204,7 +213,7 @@ function options(state, plotHeight) {
   const pad = (Math.max(...returns) - Math.min(...returns)) * 0.06 || 0.01;
   const bounds = mode === "rank" ? { min: 1, max: maxRank }
     : { min: (Math.min(...returns) - pad) * 100, max: (Math.max(...returns) + pad) * 100 };
-  const labelled = fittingLabels(payload, mode, bounds, plotHeight);
+  const labelled = fittingLabels(payload, mode, bounds, plotHeight, state.focused);
   const axisLabel = { color: token("--muted"), fontSize: 11 };
   return {
     backgroundColor: "transparent",
@@ -231,7 +240,7 @@ function options(state, plotHeight) {
                  selectedDataBackground: { lineStyle: { color: token("--line") }, areaStyle: { color: "transparent" } },
                  handleStyle: { color: token("--surface"), borderColor: token("--line") },
                  moveHandleStyle: { color: token("--line") }, textStyle: { color: token("--muted"), fontSize: 10 } }],
-    series: buildSeries(payload, mode, labelled),
+    series: buildSeries(payload, mode, labelled, state.focused),
   };
 }
 
@@ -239,24 +248,44 @@ function options(state, plotHeight) {
  * @param {HTMLElement} container
  * @param {any} payload /sectors/ranks 응답이거나 같은 모양으로 만든 이동평균 기준 값 (ma.js toRanks)
  * @param {{mode: string, basis: string, maLength: number, currency: string, calendar: Map<string, any>,
- *          onPick: (groupCode: string, periodId?: string) => void}} opts
+ *          focused?: Set<string>, onPick: (groupCode: string, periodId?: string) => void,
+ *          onFocus?: (groupCode: string) => void}} opts
  */
 export function render(container, payload, opts) {
   last = { payload, mode: opts.mode, basis: opts.basis, maLength: opts.maLength, currency: opts.currency,
-           calendar: opts.calendar, onPick: opts.onPick };
+           focused: opts.focused || new Set(), calendar: opts.calendar, onPick: opts.onPick, onFocus: opts.onFocus };
   if (!chart || chart.getDom() !== container) {
     chart?.dispose();
     container.innerHTML = "";          // 안내 문구를 띄웠던 자리면 지우고 그린다
     chart = window.echarts.init(container, null, { renderer: "canvas" });
+    // 한 번 클릭은 섹터를 고르고 두 번 클릭은 강조를 바꾼다. 두 번 클릭에도 click이 먼저 두 번 오므로
+    // 한 번 클릭의 처리를 잠깐 미뤄 두고, 더블클릭이 오면 취소한다 (docs/06 §3.2)
     chart.on("click", (params) => {
       const code = seriesCode(params);
-      if (code) last?.onPick(code, clickedPeriod(params));
+      if (!code) return;
+      const periodId = clickedPeriod(params);
+      clearTimeout(clickTimer);
+      clickTimer = window.setTimeout(() => last?.onPick(code, periodId), CLICK_DELAY);
+    });
+    chart.on("dblclick", (params) => {
+      const code = seriesCode(params);
+      if (!code) return;
+      clearTimeout(clickTimer);
+      focusedByDblClick = true;
+      last?.onFocus(code);
     });
     chart.on("mousemove", onMove);
     // 선이나 점에서 벗어나면 거둔다. 다른 계열로 옮겨 가는 경우도 같은 mousemove 안에서 mouseout → mousemove 순으로 온다
     chart.on("mouseout", hideTip);
     chart.getZr().on("globalout", hideTip);
-    container.addEventListener("dblclick", () => chart.dispatchAction({ type: "dataZoom", start: 0, end: 100 }));
+    // 선 위 더블클릭은 강조를 바꾼 것이다. 빈자리 더블클릭만 구간을 되돌린다
+    container.addEventListener("dblclick", () => {
+      if (focusedByDblClick) {
+        focusedByDblClick = false;
+        return;
+      }
+      chart.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+    });
   }
   hideTip();
   chart.setOption(options(last, plotHeight(container)), { notMerge: true });
@@ -287,6 +316,7 @@ export function hideLoading() {
 }
 
 export function dispose() {
+  clearTimeout(clickTimer);
   chart?.dispose();
   chart = null;
   last = null;

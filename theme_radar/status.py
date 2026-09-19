@@ -191,7 +191,7 @@ def render(status: Status) -> str:
                          + rows + note)
 
     if status.warnings:
-        lines += ["", "최근 실행이 남긴 경고 (차단 아님. 규칙은 docs/07 §12, docs/03 §8)",
+        lines += ["", "최근 실행이 남긴 경고 (차단 아님. 규칙은 docs/07 §13, docs/03 §8)",
                   "  " + ", ".join(f"{w['rule_code']} {w['n']}건" for w in status.warnings)]
 
     lines += ["", "할 일"]

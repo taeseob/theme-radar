@@ -106,9 +106,33 @@ def fetch_shares_info(tickers: list[str], raw_dir: Path | None) -> dict[str, Sha
     return out
 
 
-def fetch_trading_days(start: str, raw_dir: Path | None) -> list[str]:
-    """US 거래일 캘린더는 S&P 500 지수(^GSPC) 일봉 날짜로 만든다."""
-    df = yf.download("^GSPC", start=start, auto_adjust=False, progress=False, multi_level_index=True)
+@dataclass(frozen=True)
+class IndexBar:
+    """지수 일봉. 지수는 분할·배당 조정이 없어 받은 값을 그대로 쓴다."""
+    trade_date: str
+    open: float
+    high: float
+    low: float
+    close: float
+
+
+def frame_to_index_bars(df: pd.DataFrame, symbol: str) -> list[IndexBar]:
+    """(컬럼 종류, 심볼) 2단 컬럼 DataFrame에서 지수 일봉을 뽑는다. 값이 빈 날은 건너뛴다."""
+    if df.empty:
+        return []
+    column = {name: df[(name, symbol)].tolist() for name in ("Open", "High", "Low", "Close")}
+    bars = []
+    for i, day in enumerate(df.index):
+        values = [column[name][i] for name in ("Open", "High", "Low", "Close")]
+        if any(v is None or (isinstance(v, float) and math.isnan(v)) or v <= 0 for v in values):
+            continue
+        bars.append(IndexBar(day.strftime("%Y-%m-%d"), *(float(v) for v in values)))
+    return bars
+
+
+def fetch_index(symbol: str, start: str, raw_dir: Path | None) -> list[IndexBar]:
+    """지수 일봉. US 거래일 캘린더도 S&P 500 지수(^GSPC)의 날짜로 만든다 (docs/07 §8.4)."""
+    df = yf.download(symbol, start=start, auto_adjust=False, progress=False, multi_level_index=True)
     if raw_dir is not None:
-        save_raw(raw_dir, "yfinance/gspc.csv", df.to_csv().encode("utf-8"))
-    return [d.strftime("%Y-%m-%d") for d in df.index]
+        save_raw(raw_dir, f"yfinance/{symbol.lstrip('^').lower()}.csv", df.to_csv().encode("utf-8"))
+    return frame_to_index_bars(df, symbol)

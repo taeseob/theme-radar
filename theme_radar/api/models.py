@@ -230,6 +230,23 @@ class MarketCapsResponse(Model):
     data: list[GroupCloseSeries]
 
 
+class IndexPoint(Model):
+    """지수 일봉으로 만든 기간 캔들. 값은 지수 포인트라 통화 단위가 없다 (docs/03 §15)."""
+    period_id: str
+    end_date: str
+    is_provisional: bool
+    open: float
+    high: float
+    low: float
+    close: float
+    trading_days: int
+
+
+class IndexResponse(Model):
+    meta: Meta
+    data: list[IndexPoint]
+
+
 class SecurityHit(Model):
     security_id: int
     ticker: str
