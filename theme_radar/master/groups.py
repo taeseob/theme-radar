@@ -14,10 +14,27 @@ from theme_radar.db import transaction
 from theme_radar.jobs import utc_now
 
 DATA = ROOT / "data"
+
+
+@dataclass(frozen=True)
+class Spec:
+    """스킴 하나가 어느 파일의 어느 컬럼을 읽는지. 같은 파일에서 계층만 달리 읽는 스킴이 있다."""
+    market: str
+    class_file: str        # 분류표
+    code_col: str          # 분류표의 그룹 코드 컬럼
+    name_col: str          # 분류표의 그룹 이름 컬럼
+    members_file: str      # 구성종목
+    member_code_col: str   # 구성종목의 그룹 코드 컬럼
+    name_is_en: bool       # 그룹 이름이 영문이면 group_name_en 에도 같은 값을 넣는다
+
+
 SCHEMES = {
-    # 스킴: (시장, 분류표 파일, 코드 컬럼, 이름 컬럼, 구성종목 파일)
-    "WI26": ("KR", "wi26_classification.csv", "sector_code", "sector_name", "wi26_constituents.csv"),
-    "GICS": ("US", "gics_classification.csv", "sector_code", "sector_name", "gics_sp500_constituents.csv"),
+    "WI26": Spec("KR", "wi26_classification.csv", "sector_code", "sector_name",
+                 "wi26_constituents.csv", "sector_code", name_is_en=False),
+    "GICS": Spec("US", "gics_classification.csv", "sector_code", "sector_name",
+                 "gics_sp500_constituents.csv", "sector_code", name_is_en=True),
+    "GICS_IND": Spec("US", "gics_classification.csv", "industry_code", "industry_name",
+                     "gics_sp500_constituents.csv", "industry_code", name_is_en=True),
 }
 
 
@@ -37,21 +54,21 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
 
 def load_scheme(con: sqlite3.Connection, scheme: str, start_date: str) -> LoadResult:
     """그룹을 등록(갱신)하고 매핑을 교체한다. 구성종목 티커가 종목 마스터에 없으면 적재하지 않고 실패한다."""
-    market, class_file, code_col, name_col, members_file = SCHEMES[scheme]
+    spec = SCHEMES[scheme]
     colors = {r["group_code"]: r["color_hex"] for r in _read_csv(DATA / "group_colors.csv") if r["scheme_code"] == scheme}
     groups: dict[str, str] = {}
-    for row in _read_csv(DATA / class_file):
-        groups.setdefault(row[code_col], row[name_col])
+    for row in _read_csv(DATA / spec.class_file):
+        groups.setdefault(row[spec.code_col], row[spec.name_col])
 
-    members = _read_csv(DATA / members_file)
-    snapshot = members[0].get("base_date") if scheme == "WI26" else None
-    source_batch = f"{members_file}" + (f"@{snapshot}" if snapshot else "")
+    members = _read_csv(DATA / spec.members_file)
+    snapshot = members[0].get("base_date")
+    source_batch = f"{spec.members_file}" + (f"@{snapshot}" if snapshot else "")
     tickers = {r[0]: r[1] for r in con.execute(
-        "SELECT ticker, security_id FROM security WHERE market_code = ? ORDER BY delisting_date IS NULL", (market,))}
+        "SELECT ticker, security_id FROM security WHERE market_code = ? ORDER BY delisting_date IS NULL", (spec.market,))}
     missing = sorted({r["ticker"] for r in members if r["ticker"] not in tickers})
-    unknown_groups = sorted({r["sector_code"] for r in members if r["sector_code"] not in groups})
-    if unknown_groups:
-        raise ValueError(f"{members_file}에 분류표에 없는 섹터 코드가 있다: {unknown_groups}")
+    unknown = sorted({r[spec.member_code_col] for r in members if r[spec.member_code_col] not in groups})
+    if unknown:
+        raise ValueError(f"{spec.members_file}에 분류표에 없는 {spec.member_code_col} 값이 있다: {unknown}")
     if missing:
         return LoadResult(len(groups), 0, missing, source_batch)
 
@@ -62,13 +79,13 @@ def load_scheme(con: sqlite3.Connection, scheme: str, start_date: str) -> LoadRe
                 "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (scheme_code, group_code) DO UPDATE SET "
                 "group_name = excluded.group_name, group_name_en = excluded.group_name_en, sort_order = excluded.sort_order, "
                 "color_hex = excluded.color_hex",
-                (scheme, code, name, name if scheme == "GICS" else None, order, colors.get(code), start_date))
+                (scheme, code, name, name if spec.name_is_en else None, order, colors.get(code), start_date))
         had_mapping = con.execute("SELECT COUNT(*) FROM security_group_map WHERE scheme_code = ?", (scheme,)).fetchone()[0]
         con.execute("DELETE FROM security_group_map WHERE scheme_code = ?", (scheme,))
         con.executemany(
             "INSERT INTO security_group_map (scheme_code, security_id, group_code, valid_from, source_batch) VALUES (?, ?, ?, ?, ?)",
-            [(scheme, tickers[r["ticker"]], r["sector_code"], start_date, source_batch) for r in members])
+            [(scheme, tickers[r["ticker"]], r[spec.member_code_col], start_date, source_batch) for r in members])
         if had_mapping:
             con.execute("INSERT INTO recalc_request (market_code, scheme_code, from_date, reason, detail, requested_at) "
-                        "VALUES (?, ?, ?, 'MAPPING', ?, ?)", (market, scheme, start_date, source_batch, utc_now()))
+                        "VALUES (?, ?, ?, 'MAPPING', ?, ?)", (spec.market, scheme, start_date, source_batch, utc_now()))
     return LoadResult(len(groups), len(members), [], source_batch)

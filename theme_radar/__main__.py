@@ -37,12 +37,12 @@ def cmd_init_db(args: argparse.Namespace, config: dict[str, Any]) -> int:
 
 
 def cmd_load_mapping(args: argparse.Namespace, config: dict[str, Any]) -> int:
-    from theme_radar.master.groups import load_scheme
+    from theme_radar.master.groups import SCHEMES, load_scheme
     con = open_db(args, config)
     result = load_scheme(con, args.scheme, config["collect"]["start_date"])
     if result.missing_tickers:
         print(f"적재하지 않았다. 종목 마스터에 없는 티커 {len(result.missing_tickers)}개: {result.missing_tickers[:30]}")
-        print(f"먼저 .venv\\Scripts\\python -m theme_radar prices universe --market {'KR' if args.scheme == 'WI26' else 'US'}을 실행한다")
+        print(f"먼저 .venv\\Scripts\\python -m theme_radar prices universe --market {SCHEMES[args.scheme].market}을 실행한다")
         return 1
     print(f"{args.scheme}: 그룹 {result.groups}개, 매핑 {result.mappings}종목 ({result.source_batch})")
     return 0
@@ -126,6 +126,7 @@ def cmd_serve(args: argparse.Namespace, config: dict[str, Any]) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from theme_radar.master.groups import SCHEMES
     from theme_radar.prices.cli import add_commands as add_prices_commands
 
     parser = argparse.ArgumentParser(prog=".venv\\Scripts\\python -m theme_radar")
@@ -136,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_db.set_defaults(func=cmd_init_db)
 
     load_mapping = commands.add_parser("load-mapping", help="섹터 그룹과 현재 분류 매핑을 적재한다 (docs/02 §3.5)")
-    load_mapping.add_argument("--scheme", required=True, choices=["WI26", "GICS"])
+    load_mapping.add_argument("--scheme", required=True, choices=list(SCHEMES))
     load_mapping.add_argument("--db", help="DB 파일 경로 (기본값: config.toml의 db.path)")
     load_mapping.set_defaults(func=cmd_load_mapping)
 

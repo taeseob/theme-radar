@@ -9,7 +9,7 @@
 | `raw/` | 수집 원본 (HTML 1건, JSON 27건). 재파싱·감사용 | — |
 | `gics_classification.csv` | GICS 4단계 분류표 + 소분류 정의문 (미국 시장용, [§5](#5-gics_classificationcsv)) | 163 |
 | `gics_sp500_constituents.csv` | S&P 500 구성종목 → GICS 4단계 코드 매핑 ([§6](#6-gics_sp500_constituentscsv)) | 503 |
-| `group_colors.csv` | 섹터별 차트 고정 색상 (산업 계열 8색, [02 §3.4](../docs/02-domain-and-data-model.md#34-classification_scheme--classification_group)) | 37 |
+| `group_colors.csv` | 그룹별 차트 고정 색상 (산업 계열 8색, [02 §3.4](../docs/02-domain-and-data-model.md#34-classification_scheme--classification_group)). 세분류 스킴은 상위 섹터의 계열을 그대로 받는다 | 111 |
 | `theme_radar.sqlite3` | 애플리케이션 DB (git 제외, `python -m theme_radar init-db`로 생성) | — |
 
 수집 스크립트: [`scripts/fetch_wi26.py`](../scripts/fetch_wi26.py) — Python 3.9+ 표준 라이브러리만 사용한다.
@@ -277,9 +277,37 @@ GICS 종목 분류는 S&P/MSCI의 유료 데이터라 **공식 무료 원천이 
 | `SOLV` | Health Care Technology | XHE (Health Care Equipment & Supplies) |
 | `CMCSA` | Cable & Satellite | XTL (Telecom) |
 
-### 6.4 주의사항
+### 6.4 산업 레벨(`GICS_IND`)로 집계할 때의 특이사항
 
-- **섹터(2자리)는 독립 출처로 전수 검증됐지만, 산업그룹·산업·소분류는 위키 1개 출처에 의존한다.** 이번 범위의 집계 단위인 섹터에는 충분하나, 하위 레벨로 집계할 때는 위 5건을 먼저 확인한다.
+`industry_code`(6자리)를 집계 단위로 쓰는 `GICS_IND` 스킴이 이 파일의 같은 행을 읽는다([02 §9](../docs/02-domain-and-data-model.md#9-결정-기록) S-2).
+74개 산업 중 **S&P 500에 등장하는 것은 69개**다. 아래는 보정하지 않고 특이사항으로 남겨 따로 본다.
+
+**1종목뿐인 산업 7개.** 집중도 지표(`hhi`, `top1_contrib_share`)가 상시 극단값이고, 산업 수익률이 곧 그 종목의 수익률이다.
+
+| 산업 코드 | 산업명 | 종목 |
+| --- | --- | --- |
+| `251010` | Automobile Components | APTV |
+| `252020` | Leisure Products | HAS |
+| `253020` | Diversified Consumer Services | DASH |
+| `255010` | Distributors | GPC |
+| `551020` | Gas Utilities | ATO |
+| `551040` | Water Utilities | AWK |
+| `601025` | Industrial REITs | PLD |
+
+**[§6.3](#63-검증-결과)의 스팟체크 5건 중 4건이 산업 레벨에서 갈린다.** 소분류가 바뀌면 상위 산업도 바뀌는 건들이라, 섹터 레벨에서는 없던 영향이 생긴다.
+
+| 티커 | 현재 산업 | ETF 편입이 시사하는 산업 |
+| --- | --- | --- |
+| `ROP` | `452030` Electronic Equipment, Instruments & Components | `451030` Software |
+| `APP` | `502010` Media | `451030` Software |
+| `SOLV` | `351030` Health Care Technology | `351010` Health Care Equipment & Supplies |
+| `CMCSA` | `502010` Media | `501010` Diversified Telecommunication Services |
+
+`TFC`는 Diversified Banks · Regional Banks 어느 쪽이어도 `401010 Banks`라 산업 레벨에서는 차이가 없다.
+
+### 6.5 주의사항
+
+- **섹터(2자리)는 독립 출처로 전수 검증됐지만, 산업그룹·산업·소분류는 위키 1개 출처에 의존한다.** 섹터 레벨(`GICS`)에는 충분하나, 산업 레벨(`GICS_IND`)은 이 단일 출처 위에 서 있다([§6.4](#64-산업-레벨gics_ind로-집계할-때의-특이사항)).
 - **스냅샷이지 이력이 아니다.** [§4.2](#42-스냅샷이지-이력이-아니다)와 같은 문제가 있다. 과거 구성·분류 변경을 반영하려면 위키 편집 이력(리비전)이나 반복 수집으로 `valid_from`/`valid_to`를 구성해야 한다.
 - 503행은 500개 회사다. 복수 클래스 3쌍(`GOOG`/`GOOGL`, `FOX`/`FOXA`, `NWS`/`NWSA`)이 같은 CIK·같은 분류로 각각 들어 있다. 시가총액 가중 시 두 클래스를 모두 합산해야 회사 시총이 된다.
 - 위키 `constituents` 표의 헤더·id가 바뀌면 스크립트는 명시적으로 실패한다. 공식 분류표가 개정되면(GICS 구조 변경) `parse_gics.py`로 `gics_classification.csv`를 먼저 갱신해야 명칭 매칭이 유지된다.
