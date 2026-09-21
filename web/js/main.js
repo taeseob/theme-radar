@@ -15,6 +15,11 @@ const NARROW = 768;                 // 이 아래에서는 표시 섹터 수를 
 const MAX_PERIODS = { W: 260, M: 120 };
 const HEIGHT_KEY = "theme-radar-bump-height";
 const MIN_HEIGHT = 240;             // app.css의 .chart-scroll min-height와 같다
+const SIDE_KEY = "theme-radar-side-width";
+const SIDE_MIN = 220;               // 오른쪽 패널이 캔들 하나를 읽을 수 있는 최소 폭
+const SIDE_DEFAULT = 320;           // app.css의 --side-w 기본값과 같다
+const CHART_MIN = 360;              // 왼쪽 순위 차트에 남겨 두는 최소 폭
+const SIDE_STEP = 24;               // 키보드로 한 번에 옮기는 폭
 const MA_RANGE = [2, 52];           // 이동평균 기간 수로 고를 수 있는 범위 (docs/06 §5.4)
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 const sel = (id) => /** @type {HTMLSelectElement} */ (document.getElementById(id));
@@ -149,7 +154,7 @@ function drawBump(current, periodId) {
   const focused = focusSet(current);
   $("bump-hint").innerHTML = "선이나 점에 마우스를 올리면 그 기간의 값이 뜨고, 클릭하면 아래에 섹터 상세가 열린다."
     + " 더블클릭하면 그 섹터만 또렷해지고, 여러 번 하면 함께 본다."
-    + " 차트 오른쪽 아래 모서리를 끌면 높이가 바뀐다."
+    + " 차트 오른쪽 아래 모서리를 끌면 높이가, 가운데 손잡이를 끌면 지수 패널과 나눠 쓰는 너비가 바뀐다."
     + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.</span>` : "")
     + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "")
     + (focused.size ? ` <button type="button" class="ghost" id="focus-clear">강조 ${focused.size}개 해제</button>` : "");
@@ -412,6 +417,58 @@ function bindChartHeight() {
   }).observe(wrap);
 }
 
+/**
+ * 순위 차트와 오른쪽 패널의 너비는 가운데 손잡이를 끌어 정하고, 다음에 열 때도 유지한다 (docs/06 §3.6).
+ * 폭은 격자의 --side-w에 담는다. 차트는 폭이 바뀌면 ResizeObserver가 다시 그린다.
+ */
+function bindSideWidth() {
+  const split = $("bump-split");
+  const handle = $("side-handle");
+  const current = () => parseFloat(getComputedStyle(split).getPropertyValue("--side-w")) || SIDE_DEFAULT;
+
+  function apply(width, save) {
+    // 좁은 화면에서는 두 칸이 위아래로 쌓여 나눌 것이 없다 (app.css 1280px)
+    const room = split.clientWidth - CHART_MIN;
+    if (room < SIDE_MIN) return;
+    const value = Math.round(Math.max(SIDE_MIN, Math.min(width, room)));
+    split.style.setProperty("--side-w", `${value}px`);
+    try {
+      if (save) localStorage.setItem(SIDE_KEY, String(value));
+    } catch (error) { /* 저장 못 해도 화면은 동작한다 */ }
+  }
+
+  try {
+    const saved = Number(localStorage.getItem(SIDE_KEY));
+    if (saved >= SIDE_MIN) apply(saved, false);
+  } catch (error) { /* 저장소를 못 써도 기본 폭으로 동작한다 */ }
+
+  // 손잡이 밖으로 나가도 계속 끌려야 하므로 창에서 듣는다
+  handle.addEventListener("pointerdown", (event) => {
+    // 잡은 자리가 패널 왼쪽 끝에서 얼마나 떨어져 있는지 기억해, 끄는 동안 손잡이가 포인터를 따라가게 한다
+    const grab = $("side-panel").getBoundingClientRect().left - event.clientX;
+    const onMove = (move) => apply(split.getBoundingClientRect().right - move.clientX - grab, false);
+    const onUp = () => {
+      for (const [type, fn] of [["pointermove", onMove], ["pointerup", onUp], ["pointercancel", onUp]]) {
+        window.removeEventListener(type, fn);
+      }
+      apply(current(), true);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    event.preventDefault();      // 끄는 동안 글자가 선택되지 않게 한다
+  });
+  // 손잡이는 분리선이라 좌우 키로도 옮긴다 (docs/06 §8)
+  handle.addEventListener("keydown", (event) => {
+    const step = event.key === "ArrowLeft" ? SIDE_STEP : event.key === "ArrowRight" ? -SIDE_STEP : 0;
+    if (!step) return;
+    event.preventDefault();
+    apply(current() + step, true);
+  });
+  handle.addEventListener("dblclick", () => apply(SIDE_DEFAULT, true));   // 더블클릭하면 기본 폭으로 되돌린다
+  window.addEventListener("resize", () => apply(current(), false));   // 창이 줄면 최소 폭을 지킨다
+}
+
 /** 스냅샷 머리글의 정렬 열. 컨트롤의 정렬 선택과 같은 값을 쓴다 (docs/06 §4) */
 function sortSnapshot(target) {
   const cell = /** @type {HTMLElement|null} */ (target.closest("[data-sort]"));
@@ -486,6 +543,7 @@ function bind() {
     pick(/** @type {HTMLElement} */ (row).dataset.group);
   });
   bindChartHeight();
+  bindSideWidth();
   window.addEventListener("resize", () => {
     drilldown.resize();
     candleChart.resize();

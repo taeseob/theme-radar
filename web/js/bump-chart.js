@@ -225,7 +225,8 @@ function options(state, plotHeight) {
               data: payload.data.series.map((s) => s.name) },
     xAxis: { type: "category", data: labels, boundaryGap: false,
              axisLine: { lineStyle: { color: token("--line") } }, axisTick: { show: false },
-             axisLabel: { ...axisLabel, interval: labels.length > 30 ? "auto" : 0 } },
+             // 차트 폭을 사용자가 바꾸므로 라벨 간격은 ECharts가 자리에 맞춰 고른다 (docs/06 §3.6)
+             axisLabel: { ...axisLabel, interval: "auto" } },
     yAxis: mode === "rank"
       ? { type: "value", inverse: true, min: bounds.min, max: bounds.max, minInterval: 1,
           interval: maxRank > 12 ? 5 : 1, axisLabel: { ...axisLabel, formatter: (v) => `${v}위` },

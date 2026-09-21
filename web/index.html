@@ -55,11 +55,13 @@
         <button type="button" id="table-toggle" class="ghost">표로 보기</button>
       </div>
     </div>
-    <div class="bump-split">
+    <div class="bump-split" id="bump-split">
       <div class="bump-main">
         <div class="chart-scroll" id="bump-wrap"><div id="bump" class="chart"></div></div>
         <div id="bump-table" class="table-wrap" hidden></div>
       </div>
+      <div class="split-handle" id="side-handle" role="separator" aria-orientation="vertical" tabindex="0"
+           aria-label="순위 차트와 지수 패널의 너비 조절" title="끌어서 너비를 바꾼다 (←/→ 키도 된다)"></div>
       <aside class="side-panel" id="side-panel">
         <div class="side-head">
           <label class="small">섹터 <select id="side-group"></select></label>
