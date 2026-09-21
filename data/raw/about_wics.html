@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html xmlns:ng="http://angularjs.org" lang="ko">
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FnGuide Index - Wise Sector Classification (WICS)</title>
+    <link href="/Scripts/bower_components/bootstrap/dist/css/bootstrap.css" rel="stylesheet" />
+    <link href="/Content/css/bundle?v=3gjw10vARYPw531Jq1ec-vqfGzTAT-AikpZU4DbIExE1" rel="stylesheet"/>
+
+    <link href="/Scripts/bower_components/fancytree/dist/skin-xp/ui.fancytree.css" rel="stylesheet" />
+    <link href="/Content/site.css?20190718" rel="stylesheet" />
+    <script src="/bundles/scripts?v=LoN-BlEfkkCOwnYXyNcZ1_T7k5NzJab1HPw4n7ZHfQo1"></script>
+
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-102721067-5"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'UA-102721067-5', { 'page_path': location.pathname + location.search + location.hash });
+    </script>
+</head>
+<body>
+    <div id="wrapper" class="container">
+        <!-- header -->
+        <div id="header" class="row">
+            <div class="topArea col-xs-12">
+                <div class="inside">
+                    <h1>
+                        <a href="/"><img src="/Content/images/common/logo3.png?ver=1" alt="WiseIndex" /></a>
+                        <span></span>
+                        <a href="https://www.fnindex.co.kr/overview/info/MIS" class="logo_fn" target="_self"><img src="/Content/images/common/logo_fn.png?ver=1" alt="FnIndex" /></a>
+                    </h1>
+                    <div class="topMu">
+                        <!-- 상단메뉴 -->
+                        <div id="gnb">
+                            <ul>
+                                <li class=""><a href="/Index/Index#WMI500" class="gnb1Depth">wiseindex</a></li>
+                                <li class=""><a href="/DataCenter/Index" class="gnb1Depth">Data Center</a></li>
+                                <li class=""><a href="/Support/NoticeList" class="gnb1Depth">Client Support</a></li>
+                                <li class="on"><a href="/About/Index" class="gnb1Depth">About wiseindex</a></li>
+                            </ul>
+                            <div class="gnbAll">
+                                <div class="gnbBox">
+                                    <ul id="divIndexListTopMenu" class="gnbAll2Depth">
+                                        <h2>wiseindex</h2>
+                                    </ul>
+                                    <ul class="gnbAll2Depth">
+                                        <h2>Data Center</h2>
+                                        <li><a onclick="" href="/DataCenter/Index">Index Chart</a></li>
+                                        <li><a onclick="" href="/DataCenter/List">Index Data</a></li>
+                                    </ul>
+                                    <ul class="gnbAll2Depth">
+                                        <h2>Client Support</h2>
+                                        <li><a onclick="" href="/Support/NoticeList">공지사항</a></li>
+                                        <li><a onclick="" href="/Support/Contact">Contact Us & License</a></li>
+                                    </ul>
+                                    <ul class="gnbAll2Depth gnbAll2DepthLast">
+                                        <h2>About wiseindex</h2>
+                                        <li><a href="/About/Index">WISE Index</a></li>
+                                        <li>
+                                            <a href="/About/WICS">WISE Sector Classification</a>
+                                            <ul class="gnbAll3Depth">
+                                                <li><a href="/About/WICS">WICS</a></li>
+                                                <li><a href="/About/WI26">WI26</a></li>
+                                            </ul>
+                                        </li>
+                                        <li>
+                                            <a href="/About/IndexLogic">WISE Index Standards</a>
+                                            <ul class="gnbAll3Depth">
+                                                <li><a href="/About/IndexLogic">지수 산출 로직</a></li>
+                                                <li><a href="/About/CeilingLogic">실링 처리 로직</a></li>
+                                                <li><a href="/About/DistributionRate">유동주식비율 관리</a></li>
+                                                <li><a href="/About/CompanyEvent">기업 이벤트 관리</a></li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- //상단메뉴 -->
+
+                        <!-- 옵션 및 검색 -->
+                        <div class="utilMu">
+                            <form method="get" action="/Search/Index" class="topOption">
+                                <ul>
+                                    <li class="util utilSearch">
+                                        <select name="searchType" style="margin-left:20px; height:25px;">
+                                            <option value="name" selected>Search Index</option>
+                                            <option value="company">Search Components</option>
+                                        </select>
+                                    </li>
+                                    <li>
+                                        <div class="topSearch" style="margin-left:0px;">
+                                            <input title="통합검색 검색어 입력" name="query" type="text" />
+                                            <!-- [개발] 버튼 클릭시 divSearch > display:block/none // 현재는 페이지 전환 -->
+                                            <button id="btnTopSearch" type="button">통합검색</button>
+                                        </div>
+                                    </li>
+                                    <li class="util utilList"><span class="btnPack btnTopAreaSelect"><a id="btnIndexList">WISE Index Series</a></span></li>
+                                </ul>
+                            </form>
+                        </div>
+                        <!-- //옵션 및 검색 -->
+                    </div>
+                </div>
+            </div>
+            <!-- [개발] 통합검색 display:block,none -->
+            <div id="divSearch" style="display:none;">
+                <div class="row">
+                    <div class="col-xs-12">
+                        <form class="setBox" style="height:66px" method="get" action="/Search/Index">
+                            <select name="searchType" ng-change="query=''" style="width:150px;" ng-model="searchType" ng-init="searchType=''">
+                                <option value="name">Search Index</option>
+                                <option value="company">Search Component</option>
+                            </select>
+                            <input name="query" class="inpTxt" style="width:720px; height:27px" ng-model="query" ng-init="query=''" />
+                            <button type="submit" class="button search"><span></span>검색</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <!-- END -->
+            <div id="divIndexList">
+                <div class="inside">
+                    <div class="tab--type" id="indexListTap">
+                        <ul>
+                            <li class="on"><button type="button" value="1" class="btn--tab">WMI500 Index</button></li><!--[개발] addClass on-->
+                            <li><button type="button" value="2" class="btn--tab">Wise Market &amp; RI Index</button></li>
+                            <li><button type="button" value="3" class="btn--tab">Wise Style Index</button></li>
+                            <li><button type="button" value="4" class="btn--tab">Wise Sector Index</button></li>
+                            <li><button type="button" value="5" class="btn--tab">Wise Theme &amp; Group Index</button></li>
+                            <li><button type="button" value="6" class="btn--tab">Wise Strategy Index</button></li>
+                        </ul>
+                    </div>
+                    <div class="tab--cont">
+                        <div id="divIndexList1" class="list"></div>
+                        <div id="divIndexList2" class="list"></div>
+                        <div id="divIndexList3" class="list"></div>
+                        <div id="divIndexList4" class="list"></div>
+                        <div id="divIndexList5" class="list"></div>
+                        <div id="divIndexList6" class="list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="contain" class="row">
+            <!-- 컨텐츠 -->
+            <div id="mainContents" class="col-xs-12">
+                
+
+<style>
+    .listTableRowtype1 th, .listTableRowtype1 td {height:30px}
+</style>
+<div class="row">
+    <div class="col-xs-3 leftMuBox">
+        <div id="artSide">
+            <!-- 왼쪽메뉴 -->
+            <div class="leftMenu">
+                <ul class="leftMenu1Depth">
+                    <li class="disable"><a href="/About/Index">Wise Index</a></li>
+                    <li class="on">
+                        <a href=/About/WICS>Wise Sector Classification</a>
+                        <ul class="leftMenu2Depth">
+                            <li class="acitve"><a href="/About/WICS">WICS</a></li>
+                            <li><a href="/About/WI26">WI26</a></li>
+                        </ul>
+                    </li>
+                    <li><a href=/About/IndexLogic>Wise Index Standards</a></li>
+                </ul>
+            </div>
+            <!-- //왼쪽메뉴 -->
+        </div>
+    </div>
+    <div class="col-xs-9 contentsBox">
+        <h2 class="title1Depth">Wise Sector Classification</h2>
+        <div class="aboutSector">
+            <h3 id="WICS" class="title2Depth">WICS</h3>
+            <p>WICS(Wise Industry Classification Standard)는 당사에서 사용하는 대표적인 Sector 분류기준으로, 국제적으로 통용되는 분류 기준을 국내 실정에 맞게 재구성하여 확립하였습니다.</p>
+            <p class="t_right">
+                <a target="fileDownLoad" href="https://www.wiseindex.com/konannas/files/WICS Methodology.pdf?20240129"><img src="/content/images/common/table/ico_file.gif" alt=""> WICS Methodology.pdf</a><br />
+                <a target="fileDownLoad" href="https://www.wiseindex.com/konannas/files/WICS_Sector_Index_Methodology.pdf?20220520"><img src="/content/images/common/table/ico_file.gif" alt=""> WICS Sector Index Methodology.pdf</a>
+            </p>
+            <!-- 테이블 -->
+            <div class="listTableRowtype1">
+                <table class="sector">
+                    <thead>
+                        <tr>
+                            <th colspan="2">WICS 대분류</th>
+                            <th colspan="2">WICS 중분류</th>
+                            <th colspan="2">WICS 소분류</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="t_left v_top" rowspan="2">10</td><td rowspan="2" class="t_left v_top">에너지</td>
+                            <td class="t_left v_top" rowspan="2">1010</td><td rowspan="2" class="t_left v_top">에너지</td>
+                            <td class="t_left">101010</td><td class="t_left">에너지장비및서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">101020</td><td class="t_left">석유와가스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="5">15</td><td class="t_left v_top" rowspan="5">소재</td>
+                            <td class="t_left v_top" rowspan="5">1510</td><td class="t_left v_top" rowspan="5">소재</td>
+                            <td class="t_left">151010</td><td class="t_left">화학</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">151030</td><td class="t_left">포장재</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">151040</td><td class="t_left">비철금속</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">151050</td><td class="t_left">철강</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">151060</td><td class="t_left">종이와목재</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="16">20</td><td class="t_left v_top" rowspan="16">산업재</td>
+                            <td class="t_left v_top" rowspan="10">2010</td><td class="t_left v_top" rowspan="10">자본재</td>
+                            <td class="t_left">201010</td><td class="t_left">우주항공과국방</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201020</td><td class="t_left">건축제품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201025</td><td class="t_left">건축자재</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201030</td><td class="t_left">건설</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201035</td><td class="t_left">가구</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201040</td><td class="t_left">전기장비</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201050</td><td class="t_left">복합기업</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201060</td><td class="t_left">기계</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201065</td><td class="t_left">조선</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">201070</td><td class="t_left">무역회사와판매업체</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">2020</td><td class="t_left">상업서비스와공급품</td>
+                            <td class="t_left">202010</td><td class="t_left">상업서비스와공급품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="5">2030</td><td class="t_left v_top" rowspan="5">운송</td>
+                            <td class="t_left">203010</td><td class="t_left">항공화물운송과물류</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">203020</td><td class="t_left">항공사</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">203030</td><td class="t_left">해운사</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">203040</td><td class="t_left">도로와철도운송</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">203050</td><td class="t_left">운송인프라</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="14">25</td><td class="t_left v_top" rowspan="14">경기관련소비재</td>
+                            <td class="t_left v_top" rowspan="2">2510</td><td class="t_left v_top" rowspan="2">자동차와부품</td>
+                            <td class="t_left">251010</td><td class="t_left">자동차부품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">251020</td><td class="t_left">자동차</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="5">2520</td><td class="t_left v_top" rowspan="5">내구소비재와의류</td>
+                            <td class="t_left">252040</td><td class="t_left">가정용기기와용품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">252050</td><td class="t_left">레저용장비와제품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">252060</td><td class="t_left">섬유,의류,신발,호화품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">252065</td><td class="t_left">화장품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">252070</td><td class="t_left">문구류</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="2">2530</td><td class="t_left v_top" rowspan="2">호텔,레스토랑,레저 등</td>
+                            <td class="t_left">253010</td><td class="t_left">호텔,레스토랑,레저</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">253020</td><td class="t_left">다각화된소비자서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="4">2550</td><td class="t_left v_top" rowspan="4">소매(유통)</td>
+                            <td class="t_left">255010</td><td class="t_left">판매업체</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">255020</td><td class="t_left">인터넷과카탈로그소매</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">255030</td><td class="t_left">백화점과일반상점</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">255040</td><td class="t_left">전문소매</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">2560</td><td class="t_left">교육서비스</td>
+                            <td class="t_left">256010</td><td class="t_left">교육서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="5">30</td><td class="t_left v_top" rowspan="5">필수소비재</td>
+                            <td class="t_left">3010</td><td class="t_left">식품과기본식료품소매</td>
+                            <td class="t_left">301010</td><td class="t_left">식품과기본식료품소매</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="3">3020</td><td class="t_left v_top" rowspan="3">식품,음료,담배</td>
+                            <td class="t_left">302010</td><td class="t_left">음료</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">302020</td><td class="t_left">식품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">302030</td><td class="t_left">담배</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">3030</td><td class="t_left">가정용품과개인용품</td>
+                            <td class="t_left">303010</td><td class="t_left">가정용품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="6">35</td><td class="t_left v_top" rowspan="6">건강관리</td>
+                            <td class="t_left v_top" rowspan="3">3510</td><td class="t_left v_top" rowspan="3">건강관리장비와서비스</td>
+                            <td class="t_left">351010</td><td class="t_left">건강관리장비와용품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">351020</td><td class="t_left">건강관리업체및서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">351030</td><td class="t_left">건강관리기술</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="3">3520</td><td class="t_left v_top" rowspan="3">제약과생물공학</td>
+                            <td class="t_left">352010</td><td class="t_left">생물공학</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">352020</td><td class="t_left">제약</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">352030</td><td class="t_left">생명과학도구및서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="8">40</td><td class="t_left v_top" rowspan="8">금융</td>
+                            <td class="t_left">4010</td><td class="t_left">은행</td>
+                            <td class="t_left">401010</td><td class="t_left">은행</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">4020</td><td class="t_left">증권</td>
+                            <td class="t_left">402010</td><td class="t_left">증권</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="3">4030</td><td class="t_left v_top" rowspan="3">다각화된금융</td>
+                            <td class="t_left">403020</td><td class="t_left">창업투자</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">403030</td><td class="t_left">카드</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">403040</td><td class="t_left">기타금융</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="2">4040</td><td class="t_left v_top" rowspan="2">보험</td>
+                            <td class="t_left">404010</td><td class="t_left">손해보험</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">404020</td><td class="t_left">생명보험</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">4050</td><td class="t_left">부동산</td>
+                            <td class="t_left">405020</td><td class="t_left">부동산</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="12">45</td><td class="t_left v_top" rowspan="12">IT</td>
+                            <td class="t_left v_top" rowspan="2">4510</td><td class="t_left v_top" rowspan="2">소프트웨어와서비스</td>
+                            <td class="t_left">451020</td><td class="t_left">IT서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">451030</td><td class="t_left">소프트웨어</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="5">4520</td><td class="t_left v_top" rowspan="5">기술하드웨어와장비</td>
+                            <td class="t_left">452010</td><td class="t_left">통신장비</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">452015</td><td class="t_left">핸드셋</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">452020</td><td class="t_left">컴퓨터와주변기기</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">452030</td><td class="t_left">전자장비와기기</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">452040</td><td class="t_left">사무용전자제품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">4530</td><td class="t_left">반도체와반도체장비</td>
+                            <td class="t_left">453010</td><td class="t_left">반도체와반도체장비</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="2">4535</td><td class="t_left v_top" rowspan="2">전자와 전기제품</td>
+                            <td class="t_left">453510</td><td class="t_left">전자제품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">453520</td><td class="t_left">전기제품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="2">4540</td><td class="t_left v_top" rowspan="2">디스플레이</td>
+                            <td class="t_left">454010</td><td class="t_left">디스플레이 패널</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">454020</td><td class="t_left">디스플레이 장비 및 부품</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="7">50</td><td class="t_left v_top" rowspan="7">커뮤니케이션서비스</td>
+                            <td class="t_left v_top" rowspan="2">5010</td><td class="t_left v_top" rowspan="2">전기통신서비스</td>
+                            <td class="t_left">501010</td><td class="t_left">다각화된통신서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">501020</td><td class="t_left">무선통신서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top child-row" rowspan="5">5020</td><td class="t_left v_top" rowspan="5">미디어와엔터테인먼트</td>
+                            <td class="t_left">502010</td><td class="t_left">광고</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">502020</td><td class="t_left">방송과엔터테인먼트</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">502030</td><td class="t_left">출판</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">502040</td><td class="t_left">게임엔터테인먼트</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">502050</td><td class="t_left">양방향미디어와서비스</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left v_top" rowspan="5">55</td><td class="t_left v_top" rowspan="5">유틸리티</td>
+                            <td class="t_left v_top" rowspan="5">5510</td><td class="t_left v_top" rowspan="5">유틸리티</td>
+                            <td class="t_left">551010</td><td class="t_left">전기유틸리티</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">551020</td><td class="t_left">가스유틸리티</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">551030</td><td class="t_left">복합유틸리티</td>
+                        </tr>
+                        <tr>
+                            <td class="t_left child-row">551050</td><td class="t_left">독립전력생산및에너지거래</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- //테이블 -->
+        </div>
+    </div>
+</div>
+
+
+            </div>
+        </div>
+    </div>
+    <!--footer-->
+    <div class="footer">
+        <div class="sec0">
+            <div class="inside">
+                <div class="family">
+                    <!--[개발] 추후 상품이 추가되었을때 롤링기능 활성화됨. 버튼숨김-->
+                    <ul>
+                        <li class="s1"><a href="https://www.fnguide.com" target="_blank"><span class="hide">FnGuide.com</span></a></li>
+                        <li class="s7"><a href="https://www.fnspace.com" target="_blank"><span class="hide">FnSpace</span></a></li>
+                        <li class="s4"><a href="https://wcomp.fnguide.com" target="_blank"><span class="hide">CompanyGuide</span></a></li>
+                        <li class="s5"><a href="https://www.fundguide.net/" target="_blank"><span class="hide">FundGuide</span></a></li>
+                        <li class="s6"><a href="https://bestanalyst.fnguide.com/" target="_blank"><span class="hide">Best Analyst</span></a></li>
+                    </ul>
+
+                    <!--<button type="button" class="btn--prev">prev</button>
+                    <button type="button" class="btn--next">next</button>-->
+                </div>
+            </div>
+        </div>
+        <div class="sec2">
+            <div class="inside">
+                <div class="link">
+                    <ul>
+                        <li><a href="/Etc/LegalNotice" target="_blank">법적고지</a></li>
+                    </ul>
+                </div>
+                <ul class="info">
+                    <li>(주)에프앤가이드</li>
+                    <li>대표자 : 전민석</li>
+                    <li>사업자등록번호 : 220-81-91972</li>
+                    <li>주소 : 서울시 강서구 마곡중앙2로 61 에프앤가이드</li>
+                    <li>대표전화 : 02-769-7700</li>
+                </ul>
+                <p class="copy">© Copyright <strong>FnGuide Inc.</strong> All Rights Reserved.</p>
+            </div>
+        </div>
+    </div>
+    <!--//footer-->
+    
+    <script type="text/javascript" src="/Scripts/view/index.js?ver=20160122"></script>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            Index.init();
+            $(".selFamilysite").change(function () {
+                if ($(this).val() != '') {
+                    window.open($(this).val(), '_blank');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
