@@ -13,7 +13,7 @@
 | 항목 | 값 |
 | --- | --- |
 | 조회 대상 | KR: KOSPI/KOSDAQ 보통주 · US: S&P 500 구성종목 |
-| 분류 체계 | KR: WI26 · US: GICS(준거) — **자체 제공 매핑 테이블** |
+| 분류 체계 | KR: WI26 대분류·소분류 · US: GICS 섹터·산업(준거) — **자체 제공 매핑 테이블** |
 | 기간 단위 | 월(Month), ISO Week — **화면 기본값: 주(Week)** |
 | 섹터 수익률 | **직전 기간 말 시가총액 가중** 평균 |
 | 통화 | KR: KRW · US: USD (시장 간 환산·통합 없음) |
@@ -49,10 +49,12 @@ python -m venv .venv
 .venv\Scripts\python -m theme_radar prices universe --market KR
 .venv\Scripts\python -m theme_radar prices universe --market US
 .venv\Scripts\python -m theme_radar load-mapping --scheme WI26
+.venv\Scripts\python -m theme_radar load-mapping --scheme WI26_SUB
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS
+.venv\Scripts\python -m theme_radar load-mapping --scheme GICS_IND
 .venv\Scripts\python -m theme_radar prices backfill --market KR   # 약 1시간
 .venv\Scripts\python -m theme_radar prices backfill --market US
-.venv\Scripts\python -m theme_radar aggregate --market KR --full   # 파생 지표 산출 (약 20초)
+.venv\Scripts\python -m theme_radar aggregate --market KR --full   # 파생 지표 산출 (스킴 2개, 약 40초)
 .venv\Scripts\python -m theme_radar aggregate --market US --full
 ```
 
@@ -83,7 +85,7 @@ US    503    2026-09-15   2026-09-15   2026-W38 잠정    2026-09 잠정   없�
 ```
 
 걸리는 시간은 빠진 거래일이 며칠이냐에 달렸다. 실측으로 KR 17분 · US 4분이었고(2,533종목 / 503종목),
-대부분은 종목별 시세 요청을 출처 부하 제한에 맞춰 흘려보내는 시간이다. 집계는 그 뒤 10초 안에 끝난다.
+대부분은 종목별 시세 요청을 출처 부하 제한에 맞춰 흘려보내는 시간이다. 집계는 그 뒤 20초 안에 끝난다(시장마다 스킴 2개를 돈다).
 
 그다음 화면을 띄운다. http://127.0.0.1:8000 에서 화면을, `/docs`에서 API 문서를 본다.
 서버는 `127.0.0.1`에만 바인딩하므로 같은 PC에서만 열린다.

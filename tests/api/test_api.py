@@ -29,7 +29,8 @@ def get(client, path, **params):
 def test_meta_endpoints(client):
     assert {u["universe"] for u in get(client, "/api/v1/meta/universes").json()["data"]} == {"KR_COMMON", "US_SP500"}
     schemes = get(client, "/api/v1/meta/schemes", universe="KR_COMMON").json()["data"]
-    assert schemes == [{"scheme": "WI26", "name": "WI26 산업분류", "type": "SECTOR", "exclusive": True, "group_count": 2}]
+    assert schemes == [{"scheme": "WI26", "name": "WI26 산업분류", "type": "SECTOR", "exclusive": True, "group_count": 2},
+                       {"scheme": "WI26_SUB", "name": "WI26 소분류", "type": "SECTOR", "exclusive": True, "group_count": 0}]
     groups = get(client, "/api/v1/meta/groups", universe="KR_COMMON", scheme="WI26").json()["data"]
     assert [(g["group_code"], g["name"], g["color"]) for g in groups] == [
         ("WI620", "반도체", "#2a78d6"), ("WI500", "은행", "#008300")]

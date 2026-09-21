@@ -42,7 +42,7 @@ def test_seed_codes(con):
     assert con.execute("SELECT universe_code, market_code FROM universe ORDER BY 1").fetchall() == [
         ("KR_COMMON", "KR"), ("US_SP500", "US")]
     assert con.execute("SELECT scheme_code, market_code, is_exclusive FROM classification_scheme ORDER BY 1").fetchall() == [
-        ("GICS", "US", 1), ("GICS_IND", "US", 1), ("WI26", "KR", 1)]
+        ("GICS", "US", 1), ("GICS_IND", "US", 1), ("WI26", "KR", 1), ("WI26_SUB", "KR", 1)]
 
 
 def test_migrate_twice_applies_nothing(db_path):

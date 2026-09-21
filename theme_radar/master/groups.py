@@ -31,6 +31,8 @@ class Spec:
 SCHEMES = {
     "WI26": Spec("KR", "wi26_classification.csv", "sector_code", "sector_name",
                  "wi26_constituents.csv", "sector_code", name_is_en=False),
+    "WI26_SUB": Spec("KR", "wi26_classification.csv", "sub_sector_code", "sub_sector_name",
+                     "wi26_sub_constituents.csv", "sub_sector_code", name_is_en=False),
     "GICS": Spec("US", "gics_classification.csv", "sector_code", "sector_name",
                  "gics_sp500_constituents.csv", "sector_code", name_is_en=True),
     "GICS_IND": Spec("US", "gics_classification.csv", "industry_code", "industry_name",
