@@ -7,6 +7,12 @@ export function pct(value, digits = 2) {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
 }
 
+/** 두 수익률의 차. 퍼센트포인트로 적는다 @param {number|null|undefined} value @param {number} [digits] */
+export function pp(value, digits = 2) {
+  if (value === null || value === undefined) return "—";
+  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%p`;
+}
+
 /** @param {number|null|undefined} value */
 export function bp(value) {
   if (value === null || value === undefined) return "—";

@@ -89,8 +89,8 @@ export function pointsAt(groups, index) {
  * @param {Map<string, any>} groups build 결과
  * @param {any[]} periods 앞 기간을 포함한 기간 행
  * @param {number} visible 뒤에서부터 그릴 기간 수
- * @param {{topN: number, above: boolean, at: number}} opts
- *   at은 "이동평균 위" 판정에 쓸 기간 자리(선택 기간)다
+ * @param {{topN: number, above: boolean, rising: boolean, at: number}} opts
+ *   at은 "이동평균 위"·"이동평균 상승" 판정에 쓸 기간 자리(선택 기간)다. 두 거르개는 함께 켜면 둘 다 만족해야 한다
  */
 export function toRanks(groups, periods, visible, opts) {
   const skip = Math.max(0, periods.length - visible);
@@ -110,7 +110,8 @@ export function toRanks(groups, periods, visible, opts) {
     if (!points.length) continue;
     const best = Math.min(...points.map((p) => p.rank));
     const at = group.points[opts.at];
-    if ((opts.topN && best > opts.topN) || (opts.above && !(at && at.disparity > 1))) {
+    const filtered = (opts.above && !(at && at.disparity > 1)) || (opts.rising && !(at && at.ret > 0));
+    if ((opts.topN && best > opts.topN) || filtered) {
       hidden += 1;
       continue;
     }

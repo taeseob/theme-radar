@@ -54,6 +54,9 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; color: var(--ink); ba
 .ghost { font: inherit; font-size: 12px; padding: 4px 10px; background: transparent; color: var(--ink-2);
   border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 .ghost:hover { color: var(--ink); }
+/* 이동평균 기준에서만 보이는 거르개 두 개 (docs/06 3.5) */
+.ma-filters { display: inline-flex; align-items: center; gap: 10px; }
+.ma-filters[hidden] { display: none; }
 #theme-toggle { margin-left: auto; }
 
 /* min-width:0이 없으면 격자 칸이 내용 너비만큼 벌어져 카드 안에서 스크롤되지 않는다 */
@@ -111,10 +114,10 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .rows { display: grid; gap: 2px; }
 .row { display: grid; gap: 10px; align-items: center;
   padding: 4px 6px; border-radius: 6px; font-variant-numeric: tabular-nums; }
-/* 섹터 행: 섹터 · 막대 · 수익률 · 시총 비중 · 시장 기여 · 시장 대비 · 이격도 · 순위 변동 · 특징
+/* 섹터 행: 섹터 · 막대 · 수익률 · 지수 대비 · 시총 비중 · 시장 기여 · 시장 대비 · 이격도 · 상승률 · 순위 변동 · 특징
    0 선이 세로로 이어지려면 막대 칸이 행마다 같은 폭이어야 한다. 마지막 특징 칸을 내용에 맞춰(auto) 두면
    배지 수만큼 칸이 늘어 막대 칸을 밀어내므로, 배지 3개가 들어가는 고정 폭으로 둔다 */
-#snapshot .row { grid-template-columns: 190px minmax(0, 1fr) 88px 80px 84px 64px 64px 64px 232px; }
+#snapshot .row { grid-template-columns: 190px minmax(0, 1fr) 88px 72px 80px 84px 64px 64px 68px 64px 232px; }
 #snapshot .row > :last-child { overflow: hidden; white-space: nowrap; }
 .row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .row.clickable { cursor: pointer; }
@@ -178,15 +181,19 @@ th:first-child, td:first-child { text-align: left; position: sticky; left: 0; ba
 thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); }
 
 @media (max-width: 1280px) {
+  /* 열이 열한 개라 넓은 폭 그대로는 카드를 넘는다. 막대에 자리를 남기려고 고정 칸을 줄인다 */
+  #snapshot .row { grid-template-columns: 156px minmax(0, 1fr) 82px 66px 74px 78px 58px 58px 62px 54px 140px; }
   .split { grid-template-columns: 1fr; }
   /* 한 칸으로 쌓이면 가로로 나눌 것이 없다 */
   .bump-split { grid-template-columns: 1fr; }
   .split-handle { display: none; }
   .side-chart { min-height: 200px; }
 }
-/* 고정 폭이 화면을 넘지 않게 줄인다. 특징 칸은 배지 하나만 남고 나머지는 잘린다 (드릴다운에서 전부 본다) */
+/* 고정 폭이 화면을 넘지 않게 줄인다. 특징 칸은 배지 하나만 남고 나머지는 잘린다 (드릴다운에서 전부 본다).
+   여기부터는 지수 대비·상승률 두 열을 감춘다. 둘 다 옆 열(수익률·이격도)을 보조하는 값이라 먼저 접는다 */
 @media (max-width: 1080px) {
   #snapshot .row { grid-template-columns: 150px minmax(0, 1fr) 80px 72px 76px 56px 56px 52px 120px; }
+  .row .hide-mid { display: none; }
 }
 @media (max-width: 768px) {
   main { padding: 10px; }

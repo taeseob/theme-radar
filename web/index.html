@@ -50,8 +50,12 @@
         <span class="segmented" id="chart-mode">
           <button type="button" data-value="rank">순위</button><button type="button" data-value="return">수익률</button>
         </span>
-        <label class="small" id="above-filter" hidden title="선택 기간 말 시총이 이동평균 위인 섹터만 본다">
-          <input type="checkbox" id="above-ma"> 이동평균 위만</label>
+        <span class="ma-filters" id="ma-filters" hidden>
+          <label class="small" title="선택 기간 말 시총이 이동평균 위인 섹터만 본다">
+            <input type="checkbox" id="above-ma"> 이동평균 위만</label>
+          <label class="small" title="선택 기간에 이동평균이 오른 섹터만 본다">
+            <input type="checkbox" id="rising-ma"> 이동평균 상승만</label>
+        </span>
         <button type="button" id="table-toggle" class="ghost">표로 보기</button>
       </div>
     </div>

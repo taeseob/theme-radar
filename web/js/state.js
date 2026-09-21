@@ -10,6 +10,7 @@ export const DEFAULTS = {
   mode: "rank",        // rank | return
   basis: "period",     // period | ma — 순위와 상승률의 기준 (docs/06 §3.5)
   above: "",           // "1"이면 이동평균 위에 있는 섹터만 그린다 (basis=ma)
+  rising: "",          // "1"이면 이동평균이 오른 섹터만 그린다 (basis=ma). above와 함께 켜면 둘 다 만족해야 한다
   focus: "",           // 더블클릭으로 강조한 섹터. 쉼표로 잇는다. 비어 있으면 전부 또렷하다 (docs/06 §3.2)
   view: "chart",       // chart | table — 표 대체 표현 (docs/06 §8)
   group: "",           // 드릴다운으로 연 섹터

@@ -30,6 +30,8 @@ const cache = {
   /** @type {any} */ calendar: null, /** @type {any} */ ranks: null, /** @type {any} */ history: null,
   /** @type {Map<string, any>|null} */ caps: null,     // 섹터별 이동평균·상승률·이격도 (ma.js build)
   capsError: "",
+  /** @type {{payload: any, returns: Map<string, number>, name: string, error: string}} */
+  index: { payload: null, returns: new Map(), name: "시장 지수", error: "" },   // 시장 지수 (오른쪽 패널 · 스냅샷 "지수 대비")
   sideKey: "",                                        // 오른쪽 패널을 마지막으로 그린 상태 (같으면 다시 그리지 않는다)
   /** @type {Record<string, string>|null} */ state: null,
 };
@@ -118,13 +120,46 @@ async function loadCaps(current) {
   }
 }
 
+/**
+ * 시장 지수의 기간 캔들 (docs/03 §15). 오른쪽 패널이 그리고, 스냅샷의 "지수 대비" 열이 기간 수익률을 쓴다.
+ * 못 받으면 지수 차트 자리에만 안내를 두고 그 열은 비운다.
+ */
+async function loadIndex(current) {
+  const periods = cache.calendar.extended;
+  try {
+    const payload = await get("/market/index", { universe: current.universe, period: current.period,
+                                                 from: periods[0].period_id, to: cache.calendar.to });
+    // 지수의 기간 수익률은 직전 기간 말 종가 대비다. 시가는 기간 첫 거래일의 시가라 여기에 쓰지 않는다
+    const returns = new Map();
+    payload.data.forEach((point, i) => {
+      const previous = payload.data[i - 1];
+      if (previous && previous.close) returns.set(point.period_id, point.close / previous.close - 1);
+    });
+    cache.index = { payload, returns, name: payload.meta.name || "시장 지수", error: "" };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    cache.index = { payload: null, returns: new Map(), name: "시장 지수", error: error.message };
+  }
+}
+
 /** 이동평균 기준의 순위·상승률 (docs/06 §3.5). 값은 화면이 섹터 시총으로 계산한다 */
 function maRanks(current, periodId) {
   const periods = cache.calendar.extended;
   const at = periods.findIndex((p) => p.period_id === periodId);
   return ma.toRanks(cache.caps, periods, cache.calendar.rows.length,
                     { topN: effectiveTop(current.top), above: Boolean(current.above),
-                      at: at < 0 ? periods.length - 1 : at });
+                      rising: Boolean(current.rising), at: at < 0 ? periods.length - 1 : at });
+}
+
+/**
+ * 이동평균 기준의 거르개 설명 (docs/06 §3.5). 둘 다 켜면 둘 다 만족한 섹터만 남는다.
+ * 빈 문자열이면 거르지 않는다.
+ */
+function filterLabel(current) {
+  const parts = [];
+  if (current.above) parts.push("이동평균 위에 있는");
+  if (current.rising) parts.push("이동평균이 오른");
+  return parts.join(" 동시에 ");
 }
 
 function drawBump(current, periodId) {
@@ -140,12 +175,13 @@ function drawBump(current, periodId) {
   }
   const payload = current.basis === "ma" ? maRanks(current, periodId) : cache.ranks;
   const length = maLength(current.ma_n);
+  const filter = current.basis === "ma" ? filterLabel(current) : "";   // 거르개는 이동평균 기준에서만 걸린다
   if (!payload.data.series.length) {
-    // 이동평균 위 섹터가 하나도 없거나(전 섹터가 이동평균 아래), 상승률을 낼 앞 기간이 모자란 경우다
+    // 거르개를 통과한 섹터가 하나도 없거나, 상승률을 낼 앞 기간이 모자란 경우다
     bump.dispose();
     emptyMessage(asTable ? $("bump-table") : $("bump"),
-                 current.above ? "이동평균 위에 있는 섹터가 없습니다." : "선택한 구간에 그릴 섹터가 없습니다.",
-                 current.basis === "ma" && !current.above ? `${length}기간 이동평균을 낼 앞 기간이 모자랍니다.` : "");
+                 filter ? `${filter} 섹터가 없습니다.` : "선택한 구간에 그릴 섹터가 없습니다.",
+                 current.basis === "ma" && !filter ? `${length}기간 이동평균을 낼 앞 기간이 모자랍니다.` : "");
     $("bump-hint").textContent = "";
     return;
   }
@@ -158,7 +194,8 @@ function drawBump(current, periodId) {
   $("bump-hint").innerHTML = "선이나 점에 마우스를 올리면 그 기간의 값이 뜨고, 클릭하면 아래에 섹터 상세가 열린다."
     + " 더블클릭하면 그 섹터만 또렷해지고, 여러 번 하면 함께 본다."
     + " 차트 오른쪽 아래 모서리를 끌면 높이가, 가운데 손잡이를 끌면 지수 패널과 나눠 쓰는 너비가 바뀐다."
-    + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.</span>` : "")
+    + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.`
+                                + `${filter ? ` ${filter} 섹터만 본다.` : ""}</span>` : "")
     + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "")
     + (focused.size ? ` <button type="button" class="ghost" id="focus-clear">강조 ${focused.size}개 해제</button>` : "");
   if (focused.size) $("focus-clear").addEventListener("click", () => state.update({ focus: "" }));
@@ -179,7 +216,8 @@ async function drawSnapshot(current, periodId) {
                                                   period: current.period, period_id: periodId,
                                                   sort: sort === "disparity" ? "return" : sort });
   $("snapshot-title").textContent = `${payload.meta.period_id} 섹터별${payload.meta.is_provisional ? " (잠정)" : ""}`;
-  snapshot.render($("snapshot"), payload, current.group, maPoints(current, periodId), sort);
+  snapshot.render($("snapshot"), payload, current.group, maPoints(current, periodId), sort,
+                  { name: cache.index.name, ret: cache.index.returns.get(periodId) ?? null });
 }
 
 async function drawDrilldown(current, periodId) {
@@ -281,15 +319,16 @@ async function drawSidePanel(current) {
   const base = { universe: current.universe, period: current.period, from: periods[0].period_id, to: cache.calendar.to };
   const block = $("side-sector-block");
   block.hidden = !current.side;
-  const jobs = [drawSideChart($("side-index"), "/market/index", base, { ...shared, scale: "index", label: "지수" })];
+  // 지수는 구간이 바뀔 때 한 번만 받아 둔다 (loadIndex). 스냅샷의 "지수 대비" 열과 같은 응답이다
+  if (cache.index.payload) candleChart.render($("side-index"), cache.index.payload, { ...shared, scale: "index", label: "지수" });
+  else candleChart.message($("side-index"), `<p class="empty">${escapeHtml(cache.index.error)}</p>`);
+  $("side-index-title").textContent = cache.index.payload ? `${cache.index.name} 지수` : "시장 지수";
   if (current.side) {
     $("side-sector-title").textContent = `${cache.groups.get(current.side)?.name || current.side} 시가총액`;
-    jobs.push(drawSideChart($("side-sector"), `/sectors/${encodeURIComponent(current.side)}/market-cap`,
-                            { ...base, scheme: current.scheme }, { ...shared, scale: "cap", label: "시가총액",
-                                                                   color: cache.groups.get(current.side)?.color }));
+    await drawSideChart($("side-sector"), `/sectors/${encodeURIComponent(current.side)}/market-cap`,
+                        { ...base, scheme: current.scheme }, { ...shared, scale: "cap", label: "시가총액",
+                                                               color: cache.groups.get(current.side)?.color });
   }
-  const [marketIndex] = await Promise.all(jobs);
-  $("side-index-title").textContent = marketIndex ? `${marketIndex.meta.name} 지수` : "시장 지수";
 }
 
 async function drawEvents(current) {
@@ -346,7 +385,7 @@ async function refresh(force = false) {
                                                   from: cache.calendar.from, to: cache.calendar.to,
                                                   top_n: effectiveTop(current.top) });
       if (outdated()) return;
-      await loadCaps(current);
+      await Promise.all([loadCaps(current), loadIndex(current)]);
       if (outdated()) return;
       bump.hideLoading();
     }
@@ -522,6 +561,8 @@ function bind() {
     state.update({ ma: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
   $("above-ma").addEventListener("change", (e) =>
     state.update({ above: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
+  $("rising-ma").addEventListener("change", (e) =>
+    state.update({ rising: /** @type {HTMLInputElement} */ (e.target).checked ? "1" : "" }));
   $("ma-len").addEventListener("change", (e) => {
     const input = /** @type {HTMLInputElement} */ (e.target);
     input.value = String(maLength(input.value));
@@ -560,8 +601,9 @@ function syncControls(current) {
   segmented("cap-kind", current.cap, (value) => state.update({ cap: value }));
   // 이동평균 기준에서는 값이 기간 수익률이 아니라 이동평균의 상승률이다
   $("chart-mode").querySelector('[data-value="return"]').textContent = current.basis === "ma" ? "상승률" : "수익률";
-  $("above-filter").hidden = current.basis !== "ma";
+  $("ma-filters").hidden = current.basis !== "ma";
   /** @type {HTMLInputElement} */ ($("above-ma")).checked = Boolean(current.above);
+  /** @type {HTMLInputElement} */ ($("rising-ma")).checked = Boolean(current.rising);
   const maShow = /** @type {HTMLInputElement} */ ($("ma-show"));
   const maLen = /** @type {HTMLInputElement} */ ($("ma-len"));
   maShow.checked = Boolean(current.ma);
