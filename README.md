@@ -31,10 +31,13 @@
 | [07-price-ingestion.md](docs/07-price-ingestion.md) | 주가·상장주식수 수집 모듈: 출처 검증, yfinance·FinanceDataReader 사용 범위, 분할·병합 소급 갱신, 수집 단계 검증 |
 | [08-library-review.md](docs/08-library-review.md) | FinanceDataReader·yfinance 검토 기록과 채택 결정, Yahoo 분할 이벤트의 분사 혼입 |
 | [09-tech-stack.md](docs/09-tech-stack.md) | 기술 스택(Python·SQLite·FastAPI·ECharts)과 선택 이유, 저장소 구조, 배치 실행, 구현 순서 |
+| [10-setup.md](docs/10-setup.md) | **소스만 받은 상태에서 데이터 수집·실행까지.** 클론에 없는 것, 순서가 의미 있는 이유, 처음에 걸리는 곳 |
 
 ## 개발 환경
 
 Python 3.12(pyenv) 기준이다. 기술 스택과 구조는 [09-tech-stack.md](docs/09-tech-stack.md)를 본다.
+**소스만 받은 상태에서 처음 시작한다면 [10-setup.md](docs/10-setup.md)를 본다** — 아래 순서에 더해
+git에서 제외되는 `config.local.toml`을 직접 만들어야 하고(없으면 US 수집이 실행되지 않는다), 처음에 걸리는 곳을 적어 뒀다.
 
 ```bash
 python -m venv .venv
