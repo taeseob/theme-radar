@@ -273,7 +273,7 @@ async function drawSideChart(container, path, params, opts) {
 async function drawSidePanel(current) {
   fillSideGroups(current);
   const periods = cache.calendar.extended;
-  const shared = { periods, visible: cache.calendar.rows.length, kind: "candle", compact: true,
+  const shared = { periods, visible: cache.calendar.rows.length, kind: "candle", compact: true, link: true,
                    maLength: current.side_ma ? maLength(current.side_ma_n) : 0 };
   const base = { universe: current.universe, period: current.period, from: periods[0].period_id, to: cache.calendar.to };
   const block = $("side-sector-block");

@@ -15,6 +15,38 @@ import { seriesColor, token } from "./theme.js";
 const charts = new Map();
 
 const EVENT_MAX = 4;                   // 툴팁에 이름을 적는 특이사항 수. 그보다 많으면 나머지는 건수로만 적는다
+const TIP_GAP = 16;                    // 툴팁 상자와 마우스 포인터 사이 간격 (bump-chart.js와 같다)
+const LINK_GROUP = "theme-radar-candles";   // 세로선을 함께 움직이는 차트 묶음 (docs/06 §3.6)
+
+/**
+ * 상자는 마우스 포인터 왼쪽에 붙인다. 왼쪽 자리가 좁으면 오른쪽으로 넘긴다 (docs/06 §3.3).
+ * 자리는 차트 안이 아니라 화면을 기준으로 본다. 좁은 차트에서 안에만 두려 하면 늘 오른쪽으로 밀려
+ * 포인터 아래의 캔들을 가린다. 상자는 차트 밖으로 나가도 된다.
+ */
+export function tooltipPosition(point, params, dom, rect, size) {
+  const [x, y] = point;
+  const [width, height] = size.contentSize;
+  const box = dom.parentElement ? dom.parentElement.getBoundingClientRect() : { left: 0, top: 0 };
+  const left = box.left + x - width - TIP_GAP >= TIP_GAP ? x - width - TIP_GAP : x + TIP_GAP;
+  // 세로는 포인터에 맞추되 화면 위아래로는 나가지 않게 한다
+  const top = Math.min(Math.max(y - height / 2, TIP_GAP - box.top),
+                       window.innerHeight - box.top - height - TIP_GAP);
+  return [left, top];
+}
+
+/**
+ * 묶인 차트끼리는 세로선을 함께 움직이되, 상자는 포인터가 있는 차트에만 띄운다.
+ * 상자까지 둘 다 뜨면 같은 값을 두 번 읽게 된다.
+ */
+function focusTooltip(container) {
+  for (const [element, entry] of charts) {
+    if (!entry.state.link) continue;
+    const show = element === container;
+    if (entry.state.showContent === show) continue;
+    entry.state.showContent = show;
+    entry.chart.setOption({ tooltip: { showContent: show } });
+  }
+}
 
 /** 값 단위. 시가총액은 시장 통화로, 지수는 포인트로 적는다 */
 const SCALE = {
@@ -117,7 +149,8 @@ function options(state) {
     // 계열이 둘이면 범례를 둔다. 하나면 소제목이 이름을 대신하고, 좁은 차트에서는 아예 두지 않는다
     legend: { show: legend, top: 0, right: 8, itemWidth: 14, itemHeight: 8, data: [label, maName(ma)].filter(Boolean),
               textStyle: { color: token("--ink-2"), fontSize: 11 } },
-    tooltip: { trigger: "axis", confine: true, borderColor: token("--border"), backgroundColor: token("--surface"),
+    tooltip: { trigger: "axis", confine: false, position: tooltipPosition, showContent: state.showContent !== false,
+               borderColor: token("--border"), backgroundColor: token("--surface"),
                textStyle: { color: token("--ink"), fontSize: 12 }, extraCssText: "box-shadow: 0 2px 10px rgba(0,0,0,.12);",
                axisPointer: { type: "line", lineStyle: { color: token("--line") } },
                formatter: (items) => (items.length ? tooltipHtml(state, items[0].dataIndex) : "") },
@@ -138,7 +171,8 @@ function options(state) {
  * @param {HTMLElement} container
  * @param {any} payload 기간별 시가·고가·저가·종가를 담은 응답 (/sectors/{code}/market-cap, /market/index)
  * @param {{periods: any[], visible: number, kind: string, maLength: number, selected?: string, color?: string,
- *          events?: any[], scale?: string, label?: string, compact?: boolean}} opts
+ *          events?: any[], scale?: string, label?: string, compact?: boolean, link?: boolean}} opts
+ *   link가 참이면 같은 묶음의 다른 차트와 세로선을 함께 움직인다
  *   periods는 앞 기간을 포함한 /meta/periods 행이고, 그중 마지막 visible개만 그린다.
  *   events는 이 섹터에 속한 종목의 특이사항이다 (docs/05 §6.3)
  */
@@ -150,15 +184,23 @@ export function render(container, payload, opts) {
     ? { length: opts.maLength, values: movingAverage(all.map((p) => (p ? p.close : null)), opts.maLength).slice(skip) }
     : null;
   const visiblePeriods = opts.periods.slice(skip);
+  const previous = charts.get(container);
   const state = { periods: visiblePeriods, points: all.slice(skip), kind: opts.kind, ma, selected: opts.selected,
                   color: opts.color, name: payload.meta.name || payload.meta.group_code, currency: payload.meta.currency,
                   scale: opts.scale || "cap", label: opts.label || "시가총액", compact: Boolean(opts.compact),
+                  link: Boolean(opts.link), showContent: previous ? previous.state.showContent : true,
                   events: bucketEvents(opts.events, visiblePeriods) };
-  let entry = charts.get(container);
+  let entry = previous;
   if (!entry) {
     container.innerHTML = "";
     entry = { chart: window.echarts.init(container, null, { renderer: "canvas" }), state };
     charts.set(container, entry);
+    if (opts.link) container.addEventListener("pointerenter", () => focusTooltip(container));
+  }
+  if (opts.link) {
+    // 같은 묶음의 차트끼리 축 포인터와 툴팁 동작을 잇는다. 같은 기간 축·같은 격자라 세로선이 같은 자리에 선다
+    entry.chart.group = LINK_GROUP;
+    window.echarts.connect(LINK_GROUP);
   }
   entry.state = state;
   entry.chart.setOption(options(state), { notMerge: true });
