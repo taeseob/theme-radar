@@ -87,8 +87,11 @@ async function loadUniverses(current) {
 async function loadSchemes(universe, current) {
   cache.schemes = (await get("/meta/schemes", { universe })).data;
   // 시장과 스킴의 불일치는 컨트롤 단계에서 막는다. API 400을 화면에서 유발하지 않는다 (docs/06 §2)
-  const known = cache.schemes.find((s) => s.scheme === current)
-    || cache.schemes.find((s) => s.exclusive) || cache.schemes[0];
+  // 한 시장에 계층이 다른 배타 스킴이 있으면 잘게 나눈 쪽을 연다. 굵게 보려면 한 번 바꾸면 되고,
+  // 고른 스킴은 URL에 남는다 (docs/06 §2)
+  const finest = cache.schemes.filter((s) => s.exclusive)
+    .reduce((a, b) => (a === null || b.group_count > a.group_count ? b : a), null);
+  const known = cache.schemes.find((s) => s.scheme === current) || finest || cache.schemes[0];
   fillSelect(sel("scheme"), cache.schemes.map((s) => ({ value: s.scheme, label: `${s.name} (${s.group_count})` })), known.scheme);
   const groups = (await get("/meta/groups", { universe, scheme: known.scheme })).data;
   cache.groups = new Map(groups.map((g) => [g.group_code, g]));

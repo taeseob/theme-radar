@@ -217,7 +217,9 @@ theme_radar/prices/
 .venv\Scripts\python -m theme_radar prices universe  --market KR               # KIND 목록 + FDR 소속부·폐지 목록
 .venv\Scripts\python -m theme_radar prices universe  --market US               # 현재 구성 + 변경표로 편입 이력 생성
 .venv\Scripts\python -m theme_radar load-mapping --scheme WI26                 # 섹터 그룹 + 현재 분류 매핑
+.venv\Scripts\python -m theme_radar load-mapping --scheme WI26_SUB
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS
+.venv\Scripts\python -m theme_radar load-mapping --scheme GICS_IND
 .venv\Scripts\python -m theme_radar prices backfill  --market KR               # 수집 시작일부터 전 구간
 .venv\Scripts\python -m theme_radar prices backfill  --market US
 ```
@@ -844,6 +846,8 @@ Yahoo 분할 이벤트가 없는 2,135종목 중 1,989종목은 2025-01-02 ~ 202
 ### 11.2 특이사항
 
 가격이 아닌 이유로 섹터 시총을 바꾸거나, 규칙으로 처리하지 못해 계산에 오차를 남기는 사건이다. 섹터 흐름 계산은 이 사건들을 보정하지 않고 규칙대로 진행하며, 사건은 `special_event`에 한 줄씩 남겨 따로 본다.
+
+사건의 `group_code`는 **섹터 레벨 배타 스킴**(KR `WI26` · US `GICS`)의 코드다. 시장마다 계층이 다른 배타 스킴이 여럿이지만([02 §9](02-domain-and-data-model.md#9-결정-기록) S-2), `sector_share`가 사건 규모를 섹터 시총과 견주는 값이라 굵은 쪽 하나에만 기록한다. 어느 스킴인지는 [`prices/events.py`](../theme_radar/prices/events.py)의 `SCHEMES`가 단일 출처다.
 
 | 유형 | 발생 조건 | `market_cap`에 기록하는 값 |
 | --- | --- | --- |

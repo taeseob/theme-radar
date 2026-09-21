@@ -10,7 +10,7 @@ Base URL: `/api/v1`
 | 파라미터 | 타입 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- | --- |
 | `universe` | string | Y | — | `KR_COMMON` \| `US_SP500` |
-| `scheme` | string | Y | — | `WI26` \| `GICS` \| `THEME_*` |
+| `scheme` | string | Y | — | `WI26` \| `WI26_SUB` \| `GICS` \| `GICS_IND` \| `THEME_*` |
 | `period` | string | N | `W` | `W`(ISO Week) \| `M`(Month) |
 | `from` | string | N | `to` 기준 52기간 전 | 시작 기간 식별자 (`2025-W01`, `2025-01`) |
 | `to` | string | N | 최신 기간 | 종료 기간 식별자 |
@@ -91,12 +91,14 @@ Base URL: `/api/v1`
 {
   "data": [
     { "scheme": "WI26", "name": "WI26 산업분류", "type": "SECTOR", "exclusive": true,  "group_count": 26 },
+    { "scheme": "WI26_SUB", "name": "WI26 소분류", "type": "SECTOR", "exclusive": true,  "group_count": 48 },
     { "scheme": "THEME_AI", "name": "AI 테마", "type": "THEME", "exclusive": false, "group_count": 1 }
   ]
 }
 ```
 
 - `exclusive = false`인 스킴은 기여도 분해 API에서 `contribution` 필드가 `null`이다.
+- 한 시장에 **계층이 다른 배타 스킴**이 함께 온다(대분류/소분류, 섹터/산업). `group_count`가 계층의 굵기다([02 §9](02-domain-and-data-model.md#9-결정-기록) S-2).
 
 ### 2.3 `GET /meta/groups?universe=&scheme=`
 
@@ -430,7 +432,7 @@ period_id,end_date,group_code,group_name,return,rank,base_weight,contribution,me
 
 - `sector_share`는 사건 시점 섹터 시총 대비 사건 규모다. 이 값으로 정렬하면 섹터 흐름에 영향이 큰 사건부터 나온다.
 - 시장 단위 사건(데이터 공백 등)은 `ticker`와 `group_code`가 `null`이다. 그래서 `group_code`로 거르면 빠진다.
-- 사건의 `group_code`는 시장의 **배타 스킴**(KR WI26 · US GICS) 코드다. 테마 스킴을 보는 중이면 걸리는 사건이 없다.
+- 사건의 `group_code`는 시장의 **섹터 레벨 배타 스킴**(KR `WI26` · US `GICS`) 코드다. 사건 규모를 섹터 시총과 견주는 값이라 세분류 스킴에는 기록하지 않는다(07 §11.2). 세분류나 테마 스킴을 보는 중이면 걸리는 사건이 없다.
 - `source`는 그 사건을 만든 값의 수집 출처다. 유형별 값과 뜻은 [07 §11.2](07-price-ingestion.md#112-특이사항)에 있다. 한 사건에 출처가 둘 이상이면 쉼표로 잇는다. 아직 다시 뽑지 않은 사건은 `null`이다.
 
 ## 7. 캐싱

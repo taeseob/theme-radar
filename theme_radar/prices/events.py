@@ -13,6 +13,8 @@ from theme_radar.prices.sources import sec
 from theme_radar.prices.store import SHARES_PRIORITY
 from theme_radar.prices.universe import day_before
 
+# 사건을 기록할 (배타 스킴, 유니버스). 시장마다 계층이 다른 배타 스킴이 여럿이지만(docs/02 §9 S-2),
+# 사건 규모는 섹터 시총과 견주는 값이라 세분류가 아니라 섹터 레벨에 기록한다 (docs/07 §11.2)
 SCHEMES = {"KR": ("WI26", "KR_COMMON"), "US": ("GICS", "US_SP500")}
 # 유니버스 편입 이력의 출처는 시장마다 고정이다 (docs/07 §7.1, §8.1). 편입 이력 자체에는 행마다 출처가 없다
 UNIVERSE_SOURCE = {"KR": {"LISTING": "KIND_LISTING", "DELISTING": "FDR_KRX_DELISTING"},

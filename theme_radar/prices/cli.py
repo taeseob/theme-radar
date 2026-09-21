@@ -58,7 +58,7 @@ def collect_market(con, config: dict[str, Any], market: str, mode: str, only: li
         ctx = build_context(con, run, config, market, full=full, save_raw=save_raw)
         _prepare(ctx)
         module = MARKET_MODULES[market]
-        scheme = "WI26" if market == "KR" else "GICS"
+        scheme = events.SCHEMES[market][0]           # 특이사항이 기록될 스킴 하나만 본다
         if not con.execute("SELECT 1 FROM security_group_map WHERE scheme_code = ? LIMIT 1", (scheme,)).fetchone():
             ctx.log(f"주의: {scheme} 매핑이 비어 있다. 특이사항의 섹터 값이 비므로 먼저 load-mapping --scheme {scheme}을 실행한다")
         delistings = module.update_universe(ctx) if not only else None
