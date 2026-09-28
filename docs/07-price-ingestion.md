@@ -325,20 +325,28 @@ KIND 목록의 KOSPI·KOSDAQ 코드 2,649개는 모두 FDR KRX 스냅샷([§7.4]
 
 코드 `9` 규칙은 2026-09-15 기준 KOSPI·KOSDAQ에서 ISIN이 `KR7`로 시작하지 않는 22종목과 정확히 일치했다. 관리종목·투자주의환기종목은 제외하지 않고 [01 §3.1](01-requirements.md#31-kr_common)대로 상태 플래그로만 구분한다.
 
-**상장폐지 목록 (FDR)**
+**상장폐지 목록 (FDR KRX 캐시 직접 읽기)**
 
-```python
-import FinanceDataReader as fdr
-
-delisted = fdr.StockListing("KRX-DELISTING", start="2025-01-01")
-common = delisted[(delisted["SecuGroup"] == "주권") & (delisted["Kind"] == "보통주")]
 ```
+GET https://raw.githubusercontent.com/FinanceData/fdr_krx_data_cache/refs/heads/master/data/listing/delisting/{YYYY-MM-DD}.csv
+```
+
+`SecuGroup`이 `주권`이고 `Kind`가 `보통주`인 행만, `DelistingDate`가 수집 구간 안인 것만 남긴다.
 
 - 2025-01-01 이후 371행이 나왔다. 증권구분(`SecuGroup`)이 `주권`인 행은 156개이고, 그중 종류(`Kind`)가 `보통주`인 행은 153개였다.
 - 컬럼: `Symbol`(6자리 종목코드), `Name`, `Market`, `SecuGroup`, `Kind`, `ListingDate`, `DelistingDate`, `Reason`, `Industry`, `ParValue`, `ListingShares`, `ToSymbol` 등.
 - 예시: 현대홈쇼핑 `057050`, 폐지일 2026-07-20, 상장주식수 12,000,000주.
-- 이 함수는 GitHub 캐시의 최신 파일을 읽는다. 호출에 실패하면 KIND 상장폐지 현황(직접 호출)으로 폐지일만 받고, 종목코드는 KIND 상장법인목록의 전일 스냅샷과 회사명으로 맞춘다.
 - 사유가 이전상장인 행은 폐지가 아니라 시장 이동이다.
+- **파일은 날짜마다 하나이고 내용은 1956년부터 누적이다.** 며칠 전 파일을 읽어도 그날까지의 폐지는 전부 들어 있다.
+  그래서 오늘부터 30일까지 거슬러 올라가 **처음 찾은 파일**을 쓴다. 휴장일에는 파일이 없고, 캐시 생성이 끊기기도 한다.
+- **`fdr.StockListing("KRX-DELISTING")`을 쓰지 않는 이유** (2026-09-28 결정). 이 함수는 KRX에 최근 영업일(`max_work_dt`)을
+  물어 **그 날짜 파일 하나만** 읽고, 404를 포함한 모든 예외를 삼켜 **빈 DataFrame**을 돌려준다. 그러면 컬럼이 없어
+  `KeyError: 'SecuGroup'`으로 엉뚱한 자리에서 터진다. 실제로 2026-09-18부터 이 디렉터리에 파일이 생기지 않았고
+  (2026-09-28 확인. 같은 저장소의 `listing/krx` 스냅샷은 그동안에도 매일 갱신됐다) KR 수집이 유니버스 단계에서 멈췄다.
+  같은 저장소의 같은 형식이라 [§7.4](#74-상장주식수) 스냅샷처럼 직접 읽는 편이 실패를 드러내기도 쉽다.
+- 파일이 얼마나 뒤처졌는지는 C-13([§11.1](#111-수집-단계-검증))이 7일 기준으로 경고한다. 30일을 거슬러도 없으면 실패로 끝낸다.
+  그 사이 새로 폐지된 종목은 목록에 없으므로 U-1(KIND 목록에서 사라졌는데 폐지 목록에 없다)이 짚는다.
+- 캐시 자체에 닿지 못할 때 KIND 상장폐지 현황(직접 호출)으로 갈아타는 대안은 아직 만들지 않았다.
 
 매일 KIND 목록과 FDR 폐지 목록의 스냅샷을 저장하고 전일과 비교해 신규상장·폐지를 반영한다. `security.listing_date`는 KIND 상장일, `security.delisting_date`는 FDR 폐지일로 채운다.
 
@@ -818,6 +826,7 @@ def restate(conn, sec, source, run_id, now):
 | C-11 | 유니버스에 속한 US 티커의 yfinance 결과가 전 구간 NaN이다 | US | 편출 후 폐지 종목이면 경고, 현재 구성종목이면 차단 |
 | C-12 | yfinance 결과에 `Adj Close` 컬럼이 없다. `auto_adjust=True`로 받으면 이 컬럼이 빠지고 `Close`가 배당 조정 값이 된다 | US | 차단 |
 | C-13 | FDR KRX 스냅샷 파일이 없거나 휴장일 파일이다 | KR | 해당 날짜 FDR 관측치 생략. 7거래일 연속이면 경고 (캐시 중단 의심) |
+| C-13 | FDR 상장폐지 목록 캐시가 오늘 것이 아니다 (`KR/fdr_delisting`) | KR | 찾은 것 중 가장 최근 파일을 쓴다. 7일 이상 뒤처지면 경고 ([§7.1](#71-종목-마스터와-유니버스)) |
 
 구현하며 더한 검사는 다음과 같다. 결과는 C-*와 같이 `validation_result`에 남는다.
 

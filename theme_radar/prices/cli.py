@@ -67,7 +67,7 @@ def collect_market(con, config: dict[str, Any], market: str, mode: str, only: li
         if market == "KR":
             if delistings is None:
                 from theme_radar.prices.sources import fdr_krx
-                delistings = fdr_krx.fetch_delistings(ctx.raw_dir, ctx.start)
+                delistings = fdr_krx.fetch_delistings(ctx.fetcher, ctx.start, ctx.today).rows
             module.collect_shares(ctx, delistings, only)
         else:
             module.collect_shares(ctx, only)
@@ -85,7 +85,7 @@ def _shares(args: argparse.Namespace, config: dict[str, Any], open_db) -> int:
         _prepare(ctx)
         if args.market == "KR":
             from theme_radar.prices.sources import fdr_krx
-            collect_kr.collect_shares(ctx, fdr_krx.fetch_delistings(ctx.raw_dir, ctx.start))
+            collect_kr.collect_shares(ctx, fdr_krx.fetch_delistings(ctx.fetcher, ctx.start, ctx.today).rows)
         else:
             collect_us.collect_shares(ctx)
         validate.run_checks(ctx)

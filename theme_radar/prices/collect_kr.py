@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import date
 
 from theme_radar.db import transaction
 from theme_radar.prices import adjust, store
@@ -28,7 +29,11 @@ def update_universe(ctx: Context) -> list[fdr_krx.Delisting]:
         snapshot = fdr_krx.fetch_snapshot(ctx.fetcher, day)
         if snapshot:
             break
-    delistings = fdr_krx.fetch_delistings(ctx.raw_dir, ctx.start)
+    delisting = fdr_krx.fetch_delistings(ctx.fetcher, ctx.start, ctx.today)
+    lag = (date.fromisoformat(ctx.today) - date.fromisoformat(delisting.base_date)).days
+    ctx.run.check("C-13", "KR/fdr_delisting", "WARN", lag < 7, observed=lag, tolerance=7,
+                  detail=f"FDR 상장폐지 목록이 {delisting.base_date}까지다 (캐시 중단 의심)" if lag >= 7 else None)
+    delistings = delisting.rows
     records = kr_records(listings, snapshot, delistings, ctx.start, set(ctx.config["kr"]["excluded_funds"]))
     with transaction(ctx.con):
         for rec in records:
@@ -40,7 +45,8 @@ def update_universe(ctx: Context) -> list[fdr_krx.Delisting]:
         if r[0] not in listed]
     ctx.run.check("U-1", "KR", "WARN", not vanished, observed=len(vanished),
                   detail=f"KIND 목록에서 사라졌지만 상장폐지 목록에 없는 종목: {vanished[:20]}" if vanished else None)
-    ctx.log(f"유니버스: 상장 {len(listed)}, 폐지 {len(records) - len(listed)}, KR_COMMON 편입 기간 {members}")
+    ctx.log(f"유니버스: 상장 {len(listed)}, 폐지 {len(records) - len(listed)}, KR_COMMON 편입 기간 {members} "
+            f"(폐지 목록 {delisting.base_date})")
     return delistings
 
 

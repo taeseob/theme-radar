@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
+from datetime import date, timedelta
 
-import FinanceDataReader as fdr
 import pandas as pd
 
-from theme_radar.prices.net import Fetcher, HttpError, save_raw
+from theme_radar.prices.net import Fetcher, HttpError
 
 SNAPSHOT_URL = ("https://raw.githubusercontent.com/FinanceData/fdr_krx_data_cache/"
                 "refs/heads/master/data/listing/krx/{date}.csv")
+DELISTING_URL = ("https://raw.githubusercontent.com/FinanceData/fdr_krx_data_cache/"
+                 "refs/heads/master/data/listing/delisting/{date}.csv")
+DELISTING_LOOKBACK_DAYS = 30
 BOARDS = {"KOSPI": "KOSPI", "KOSDAQ": "KOSDAQ", "KOSDAQ GLOBAL": "KOSDAQ", "KONEX": "KONEX"}
 
 
@@ -32,6 +35,12 @@ class Delisting:
     delisting_date: str
     listing_shares: int | None   # 폐지 시점 상장주식수
     reason: str
+
+
+@dataclass(frozen=True)
+class DelistingSnapshot:
+    base_date: str               # 실제로 읽은 파일의 날짜. 오늘이 아닐 수 있다
+    rows: list[Delisting]
 
 
 def parse_snapshot(body: bytes) -> dict[str, SnapshotRow] | None:
@@ -78,8 +87,32 @@ def delistings_from_frame(df: pd.DataFrame) -> list[Delisting]:
     return out
 
 
-def fetch_delistings(raw_dir, start: str) -> list[Delisting]:
-    df = fdr.StockListing("KRX-DELISTING", start=start)
-    if raw_dir is not None:
-        save_raw(raw_dir, "fdr_delisting/krx_delisting.csv", df.to_csv(index=False).encode("utf-8"))
-    return delistings_from_frame(df)
+def parse_delistings(body: bytes, start: str, end: str) -> list[Delisting]:
+    """캐시 파일은 1956년부터 누적이다. 수집 구간에 폐지된 종목만 남긴다."""
+    df = pd.read_csv(io.BytesIO(body), index_col=0, dtype={"Symbol": str, "ToSymbol": str}, thousands=",")
+    delisted = pd.to_datetime(df["DelistingDate"], format="%Y-%m-%d", errors="coerce")
+    return delistings_from_frame(df[(delisted >= pd.Timestamp(start)) & (delisted <= pd.Timestamp(end))])
+
+
+def fetch_delistings(fetcher: Fetcher, start: str, today: str,
+                     lookback_days: int = DELISTING_LOOKBACK_DAYS) -> DelistingSnapshot:
+    """가장 최근 폐지 목록 파일을 읽는다 (docs/07 §7.1).
+
+    날짜마다 파일 하나이고 내용은 누적이라, 며칠 전 파일을 읽어도 그 날까지의 폐지는 전부 들어 있다.
+    휴장일에는 파일이 없고 캐시 생성이 끊기기도 하므로(2026-09-18~28 중단 확인. 같은 기간 krx
+    스냅샷은 갱신됐다) 오늘부터 거슬러 올라가 처음 찾은 파일을 쓴다. 얼마나 뒤처졌는지는 부르는
+    쪽이 C-13으로 본다.
+    """
+    day = date.fromisoformat(today)
+    for _ in range(lookback_days):
+        iso = day.isoformat()
+        try:
+            body = fetcher.get(DELISTING_URL.format(date=iso), raw=f"fdr_delisting/{iso}.csv")
+        except HttpError as err:
+            if err.status != 404:
+                raise
+            day -= timedelta(days=1)
+            continue
+        return DelistingSnapshot(iso, parse_delistings(body, start, today))
+    raise RuntimeError(f"FDR 상장폐지 목록 캐시가 {today}부터 {lookback_days}일을 거슬러 올라가도 없다: "
+                       f"{DELISTING_URL.format(date=today)}")

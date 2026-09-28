@@ -2,8 +2,10 @@
 import json
 
 import pandas as pd
+import pytest
 
-from theme_radar.prices.sources import daum, kind, naver, sec, wiki, yf
+from theme_radar.prices.net import HttpError
+from theme_radar.prices.sources import daum, fdr_krx, kind, naver, sec, wiki, yf
 
 
 def test_parse_sise_is_not_json():
@@ -67,3 +69,60 @@ def test_frame_to_index_bars_skips_empty_days():
     bars = yf.frame_to_index_bars(df, "^GSPC")
     assert [(b.trade_date, b.open, b.high, b.low, b.close) for b in bars] == [("2026-09-14", 6500.0, 6560.0, 6480.0, 6540.0)]
     assert yf.frame_to_index_bars(pd.DataFrame(), "^GSPC") == []
+
+DELISTING_CSV = "\n".join([
+    ",Symbol,Name,Market,SecuGroup,Kind,ListingDate,DelistingDate,Reason,ArrantEnforceDate,ArrantEndDate,"
+    "Industry,ParValue,ListingShares,ToSymbol,ToName",
+    '0,057050,현대홈쇼핑,KOSPI,주권,보통주,2010-09-13,2026-07-20,완전자회사화,,,,5000,"12,000,000",,',
+    "1,028740,경성전기,KOSPI,주권,,1956-03-03,1961-06-30,상장폐지유예기간종료,,,,,,,",
+    "2,111111,어떤우선주,KOSDAQ,주권,우선주,2020-01-01,2026-08-01,감사의견,,,,500,1000,,",
+    "3,222222,옛회사,KOSDAQ,주권,보통주,2010-01-01,2024-12-30,감사의견,,,,500,2000,,",
+]).encode("utf-8")
+
+
+class FakeFetcher:
+    """날짜별 캐시 파일 중 있는 것만 돌려준다. 없는 날은 실제 원격과 같이 404다."""
+
+    def __init__(self, available: dict[str, bytes]):
+        self.available = available
+        self.tried: list[str] = []
+
+    def get(self, url: str, *, headers=None, raw=None) -> bytes:
+        day = url.rsplit("/", 1)[-1].removesuffix(".csv")
+        self.tried.append(day)
+        if day not in self.available:
+            raise HttpError(url, 404, "Not Found")
+        return self.available[day]
+
+
+def test_parse_delistings_keeps_common_stock_in_window():
+    """캐시 파일은 1956년부터 누적이라 수집 구간 밖과 보통주 아닌 행을 걸러야 한다."""
+    rows = fdr_krx.parse_delistings(DELISTING_CSV, "2025-01-01", "2026-09-28")
+    assert [(r.code, r.board, r.delisting_date, r.listing_shares) for r in rows] == [
+        ("057050", "KOSPI", "2026-07-20", 12_000_000)]
+
+
+def test_fetch_delistings_walks_back_to_newest_available_file():
+    """캐시 생성이 끊겨도(2026-09-18~28 실측) 마지막 파일로 이어 간다. 내용이 누적이라 그래도 된다."""
+    fetcher = FakeFetcher({"2026-09-17": DELISTING_CSV})
+    snapshot = fdr_krx.fetch_delistings(fetcher, "2025-01-01", "2026-09-28")
+    assert snapshot.base_date == "2026-09-17"
+    assert [r.code for r in snapshot.rows] == ["057050"]
+    assert fetcher.tried[0] == "2026-09-28" and fetcher.tried[-1] == "2026-09-17"
+
+
+def test_fetch_delistings_fails_loudly_when_cache_is_gone():
+    """FDR은 빈 DataFrame을 돌려줘 엉뚱한 KeyError가 났다. 없으면 없다고 끝낸다."""
+    fetcher = FakeFetcher({})
+    with pytest.raises(RuntimeError, match="상장폐지 목록 캐시"):
+        fdr_krx.fetch_delistings(fetcher, "2025-01-01", "2026-09-28", lookback_days=3)
+    assert fetcher.tried == ["2026-09-28", "2026-09-27", "2026-09-26"]
+
+
+def test_fetch_delistings_does_not_swallow_other_errors():
+    class Broken(FakeFetcher):
+        def get(self, url, *, headers=None, raw=None):
+            raise HttpError(url, 503, "Service Unavailable")
+
+    with pytest.raises(HttpError):
+        fdr_krx.fetch_delistings(Broken({}), "2025-01-01", "2026-09-28")
