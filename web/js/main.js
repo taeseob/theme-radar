@@ -3,6 +3,7 @@
 import { ApiError, get } from "./api.js";
 import * as bump from "./bump-chart.js";
 import * as candleChart from "./candle-chart.js";
+import * as cum from "./cum.js";
 import * as drilldown from "./drilldown.js";
 import * as events from "./events.js";
 import { escapeHtml } from "./format.js";
@@ -30,6 +31,8 @@ const cache = {
   /** @type {any} */ calendar: null, /** @type {any} */ ranks: null, /** @type {any} */ history: null,
   /** @type {Map<string, any>|null} */ caps: null,     // 섹터별 이동평균·상승률·이격도 (ma.js build)
   capsError: "",
+  /** @type {Map<string, any>|null} */ cum: null,      // 섹터별 N기간 누적수익과 그 순위 (cum.js build)
+  cumError: "",
   /** @type {{payload: any, returns: Map<string, number>, name: string, error: string}} */
   index: { payload: null, returns: new Map(), name: "시장 지수", error: "" },   // 시장 지수 (오른쪽 패널 · 스냅샷 "지수 대비")
   sideKey: "",                                        // 오른쪽 패널을 마지막으로 그린 상태 (같으면 다시 그리지 않는다)
@@ -121,6 +124,24 @@ async function loadCaps(current) {
 }
 
 /**
+ * 앞 기간까지 섹터 기간 수익률을 받아 N기간 누적수익을 만든다 (docs/03 §16).
+ * 누적 기준(docs/06 §3.5)과 스냅샷의 누적 열이 이 값을 쓴다. 못 받으면 두 자리만 비운다.
+ */
+async function loadCum(current) {
+  try {
+    const payload = await get("/sectors/ranks", { universe: current.universe, scheme: current.scheme,
+                                                  period: current.period, from: cache.calendar.extended[0].period_id,
+                                                  to: cache.calendar.to });
+    cache.cum = cum.build(payload, cache.calendar.extended, maLength(current.ma_n));
+    cache.cumError = "";
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    cache.cum = null;
+    cache.cumError = error.message;
+  }
+}
+
+/**
  * 시장 지수의 기간 캔들 (docs/03 §15). 오른쪽 패널이 그리고, 스냅샷의 "지수 대비" 열이 기간 수익률을 쓴다.
  * 못 받으면 지수 차트 자리에만 안내를 두고 그 열은 비운다.
  */
@@ -151,6 +172,12 @@ function maRanks(current, periodId) {
                       rising: Boolean(current.rising), at: at < 0 ? periods.length - 1 : at });
 }
 
+/** 누적 기준의 순위·누적수익 (docs/06 §3.5). 값은 화면이 섹터 기간 수익률로 계산한다 */
+function cumRanks(current) {
+  return cum.toRanks(cache.cum, cache.calendar.extended, cache.calendar.rows.length,
+                     { topN: effectiveTop(current.top) });
+}
+
 /**
  * 이동평균 기준의 거르개 설명 (docs/06 §3.5). 둘 다 켜면 둘 다 만족한 섹터만 남는다.
  * 빈 문자열이면 거르지 않는다.
@@ -167,13 +194,16 @@ function drawBump(current, periodId) {
   $("bump-wrap").hidden = asTable;
   $("bump-table").hidden = !asTable;
   $("table-toggle").textContent = asTable ? "차트로 보기" : "표로 보기";
-  if (current.basis === "ma" && !cache.caps) {
+  if ((current.basis === "ma" && !cache.caps) || (current.basis === "cum" && !cache.cum)) {
     bump.dispose();
-    emptyMessage(asTable ? $("bump-table") : $("bump"), "섹터 시가총액이 아직 계산되지 않았습니다.", cache.capsError);
+    emptyMessage(asTable ? $("bump-table") : $("bump"),
+                 current.basis === "ma" ? "섹터 시가총액이 아직 계산되지 않았습니다." : "섹터 수익률을 불러오지 못했습니다.",
+                 current.basis === "ma" ? cache.capsError : cache.cumError);
     $("bump-hint").textContent = "";
     return;
   }
-  const payload = current.basis === "ma" ? maRanks(current, periodId) : cache.ranks;
+  const payload = current.basis === "ma" ? maRanks(current, periodId)
+    : current.basis === "cum" ? cumRanks(current) : cache.ranks;
   const length = maLength(current.ma_n);
   const filter = current.basis === "ma" ? filterLabel(current) : "";   // 거르개는 이동평균 기준에서만 걸린다
   if (!payload.data.series.length) {
@@ -181,7 +211,8 @@ function drawBump(current, periodId) {
     bump.dispose();
     emptyMessage(asTable ? $("bump-table") : $("bump"),
                  filter ? `${filter} 섹터가 없습니다.` : "선택한 구간에 그릴 섹터가 없습니다.",
-                 current.basis === "ma" && !filter ? `${length}기간 이동평균을 낼 앞 기간이 모자랍니다.` : "");
+                 current.basis === "ma" && !filter ? `${length}기간 이동평균을 낼 앞 기간이 모자랍니다.`
+                   : current.basis === "cum" ? `${length}기간 누적수익을 낼 앞 기간이 모자랍니다.` : "");
     $("bump-hint").textContent = "";
     return;
   }
@@ -196,6 +227,7 @@ function drawBump(current, periodId) {
     + " 차트 오른쪽 아래 모서리를 끌면 높이가, 가운데 손잡이를 끌면 지수 패널과 나눠 쓰는 너비가 바뀐다."
     + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.`
                                 + `${filter ? ` ${filter} 섹터만 본다.` : ""}</span>` : "")
+    + (current.basis === "cum" ? ` <span class="muted">${length}기간 누적수익률이 기준이다.</span>` : "")
     + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "")
     + (focused.size ? ` <button type="button" class="ghost" id="focus-clear">강조 ${focused.size}개 해제</button>` : "");
   if (focused.size) $("focus-clear").addEventListener("click", () => state.update({ focus: "" }));
@@ -209,15 +241,24 @@ function maPoints(current, periodId) {
   return { length: maLength(current.ma_n), points: ma.pointsAt(cache.caps, index) };
 }
 
+/** 선택 기간의 섹터별 N기간 누적수익. 못 받았으면 null이고, 표는 그 칸을 비운다 */
+function cumPoints(current, periodId) {
+  if (!cache.cum) return null;
+  const index = cache.calendar.extended.findIndex((p) => p.period_id === periodId);
+  if (index < 0) return null;
+  return { length: maLength(current.ma_n), points: cum.pointsAt(cache.cum, index) };
+}
+
 async function drawSnapshot(current, periodId) {
-  // 이격도는 서버에 없어(docs/03 §14.3) 정렬을 화면이 한다. API에는 기본 정렬을 받아 온다
+  // 이격도와 누적수익은 서버에 없어(docs/03 §14.3, §16) 정렬을 화면이 한다. API에는 기본 정렬을 받아 온다
   const sort = sel("snapshot-sort").value;
   const payload = await get("/sectors/returns", { universe: current.universe, scheme: current.scheme,
                                                   period: current.period, period_id: periodId,
-                                                  sort: sort === "disparity" ? "return" : sort });
+                                                  sort: sort === "disparity" || sort === "cumulative" ? "return" : sort });
   $("snapshot-title").textContent = `${payload.meta.period_id} 섹터별${payload.meta.is_provisional ? " (잠정)" : ""}`;
   snapshot.render($("snapshot"), payload, current.group, maPoints(current, periodId), sort,
-                  { name: cache.index.name, ret: cache.index.returns.get(periodId) ?? null });
+                  { name: cache.index.name, ret: cache.index.returns.get(periodId) ?? null },
+                  cumPoints(current, periodId));
 }
 
 async function drawDrilldown(current, periodId) {
@@ -385,7 +426,7 @@ async function refresh(force = false) {
                                                   from: cache.calendar.from, to: cache.calendar.to,
                                                   top_n: effectiveTop(current.top) });
       if (outdated()) return;
-      await Promise.all([loadCaps(current), loadIndex(current)]);
+      await Promise.all([loadCaps(current), loadCum(current), loadIndex(current)]);
       if (outdated()) return;
       bump.hideLoading();
     }
@@ -599,8 +640,9 @@ function syncControls(current) {
   segmented("chart-mode", current.mode, (value) => state.update({ mode: value }));
   segmented("chart-basis", current.basis, (value) => state.update({ basis: value }));
   segmented("cap-kind", current.cap, (value) => state.update({ cap: value }));
-  // 이동평균 기준에서는 값이 기간 수익률이 아니라 이동평균의 상승률이다
-  $("chart-mode").querySelector('[data-value="return"]').textContent = current.basis === "ma" ? "상승률" : "수익률";
+  // 이동평균 기준에서는 값이 이동평균의 상승률이고, 누적 기준에서는 N기간 누적수익률이다
+  $("chart-mode").querySelector('[data-value="return"]').textContent =
+    current.basis === "ma" ? "상승률" : current.basis === "cum" ? "누적수익률" : "수익률";
   $("ma-filters").hidden = current.basis !== "ma";
   /** @type {HTMLInputElement} */ ($("above-ma")).checked = Boolean(current.above);
   /** @type {HTMLInputElement} */ ($("rising-ma")).checked = Boolean(current.rising);

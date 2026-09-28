@@ -8,7 +8,7 @@ export const DEFAULTS = {
   range: "26",
   top: "0",
   mode: "rank",        // rank | return
-  basis: "period",     // period | ma — 순위와 상승률의 기준 (docs/06 §3.5)
+  basis: "cum",        // cum | period | ma — 순위와 값의 기준 (docs/06 §3.5). 기본은 N기간 누적수익
   above: "",           // "1"이면 이동평균 위에 있는 섹터만 그린다 (basis=ma)
   rising: "",          // "1"이면 이동평균이 오른 섹터만 그린다 (basis=ma). above와 함께 켜면 둘 다 만족해야 한다
   focus: "",           // 더블클릭으로 강조한 섹터. 쉼표로 잇는다. 비어 있으면 전부 또렷하다 (docs/06 §3.2)
@@ -17,7 +17,7 @@ export const DEFAULTS = {
   pid: "",             // 선택한 기간 (비어 있으면 최신)
   cap: "line",         // line | candle — 섹터 시가총액 차트 모양 (docs/06 §5.4)
   ma: "",              // "1"이면 시가총액 차트에 이동평균선을 그린다
-  ma_n: "5",           // 이동평균 기간 수. 순위 기준·이격도·시가총액 차트가 함께 쓴다
+  ma_n: "13",          // 기준 기간 수 N. 누적수익·이동평균 순위 기준·이격도·시가총액 차트가 함께 쓴다
   side: "",            // 오른쪽 패널에서 함께 보는 섹터. 비어 있으면 시장 지수만 (docs/06 §3.6)
   side_ma: "",         // "1"이면 오른쪽 패널 차트에 이동평균선을 그린다
   side_ma_n: "5",      // 오른쪽 패널의 이동평균 기간 수

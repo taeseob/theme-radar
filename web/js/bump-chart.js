@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * 범프 차트 (docs/06 §3). 순위 모드는 y축을 뒤집고, 수익률 모드는 일반 선 차트다.
- * 기준(basis)은 기간 수익률이거나 섹터 시총 이동평균의 상승률이다. 두 기준의 값 모양이 같아 그리는 방법은 하나다.
+ * 기준(basis)은 N기간 누적수익률, 기간 수익률, 섹터 시총 이동평균의 상승률 중 하나다. 값 모양이 같아 그리는 방법은 하나다.
  */
 import { bp, cap, disparity, escapeHtml, pct, periodLabels } from "./format.js";
 import { seriesColor, token } from "./theme.js";
@@ -127,10 +127,21 @@ function maRows(state, point) {
   ];
 }
 
+/** 누적 기준 (docs/06 §3.5). 값은 화면이 섹터 기간 수익률을 복리로 이어 계산한다 */
+function cumRows(state, point) {
+  return [
+    rankRow(point),
+    ["누적수익률", `<b>${pct(point.return)}</b>`, `(${state.maLength}기간)`],
+    ["기간 수익률", pct(point.period_return), ""],
+    ["구성종목", `${point.member_cnt}종목`, ""],
+  ];
+}
+
 function tooltipHtml(state, name, point) {
   const period = state.payload.data.periods.find((p) => p.period_id === point.period_id);
   const cal = state.calendar.get(point.period_id);
-  const rows = state.basis === "ma" ? maRows(state, point) : periodRows(state, point, period);
+  const rows = state.basis === "ma" ? maRows(state, point)
+    : state.basis === "cum" ? cumRows(state, point) : periodRows(state, point, period);
   const span = cal ? `${cal.cal_start} ~ ${cal.cal_end}` : "";
   const divider = '<div style="height:1px;background:currentColor;opacity:.15;margin:5px 0"></div>';
   return [
@@ -326,7 +337,7 @@ export function dispose() {
 
 /** 차트 데이터의 표 대체 표현 (docs/06 §8). CSV 내보내기와 같은 데이터다 */
 export function tableHtml(payload, mode, basis = "period") {
-  const valueLabel = basis === "ma" ? "이동평균 상승률" : "수익률";
+  const valueLabel = basis === "ma" ? "이동평균 상승률" : basis === "cum" ? "누적수익률" : "수익률";
   const periods = payload.data.periods;
   const head = periods.map((p) => `<th scope="col">${p.period_id}</th>`).join("");
   const rows = payload.data.series.map((line) => {

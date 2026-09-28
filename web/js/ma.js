@@ -16,8 +16,11 @@ export function movingAverage(values, n) {
   });
 }
 
-/** 경쟁 순위. 동점이면 같은 순위를 주고 다음 순위를 건너뛴다 (1, 2, 2, 4) (docs/03 §6) */
-function assignRanks(entries) {
+/**
+ * 경쟁 순위. 동점이면 같은 순위를 주고 다음 순위를 건너뛴다 (1, 2, 2, 4) (docs/03 §6).
+ * 누적수익 기준(cum.js)도 같은 규칙을 쓴다.
+ */
+export function assignRanks(entries) {
   entries.sort((a, b) => b.point.ret - a.point.ret || (a.code < b.code ? -1 : 1));
   let previous = null;
   let previousRank = 0;

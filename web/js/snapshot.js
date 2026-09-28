@@ -21,9 +21,9 @@ function axis(max) {
 
 /**
  * 값 행과 같은 격자의 머리글. 정렬 기준인 열은 눌러서 바꿀 수 있고 ▼로 표시한다.
- * 정렬 키는 /sectors/returns의 sort 값과 같고(docs/05 §3.2), 이격도만 화면이 맡는다.
+ * 정렬 키는 /sectors/returns의 sort 값과 같고(docs/05 §3.2), 누적수익과 이격도는 화면이 맡는다.
  */
-function head(max, sort, maLength, index) {
+function head(max, sort, maLength, index, cumLength) {
   const column = (label, key, narrow = "", title = "") => {
     const active = key === sort;
     const attrs = key ? ` data-sort="${key}" role="button" tabindex="0" aria-sort="${active ? "descending" : "none"}"` : "";
@@ -34,12 +34,14 @@ function head(max, sort, maLength, index) {
     <span class="name">섹터</span>
     ${axis(max)}
     ${column("수익률", "return")}
+    ${column("누적", "cumulative", " hide-narrow",
+             `${cumLength ? `${cumLength}기간 ` : ""}누적수익률. 이번 기간까지 섹터 기간 수익률을 복리로 이은 값이다`)}
     ${column("지수 대비", "", " hide-narrow hide-mid",
              `섹터 수익률 − 같은 기간 ${index?.name || "시장 지수"} 수익률 (%p).`
              + ` 이 기간 지수 수익률은 ${pct(index?.ret)}다`)}
     ${column("시총 비중", "weight", " hide-narrow")}
     ${column("시장 기여", "contribution", " hide-narrow")}
-    <span class="num hide-narrow" title="시장 수익률 대비 이 섹터 기여도의 비율">시장 대비</span>
+    <span class="num hide-narrow hide-mid" title="시장 수익률 대비 이 섹터 기여도의 비율">시장 대비</span>
     ${column("이격도", "disparity", " hide-narrow",
              `기간 말 섹터 시총 ÷ ${maLength ? `${maLength}기간 ` : ""}이동평균 × 100. 100보다 크면 이동평균 위다`)}
     ${column("상승률", "", " hide-narrow hide-mid",
@@ -50,7 +52,7 @@ function head(max, sort, maLength, index) {
   </div>`;
 }
 
-function row(sector, max, selected, point, indexReturn) {
+function row(sector, max, selected, point, indexReturn, cumPoint) {
   const unmapped = sector.group_code === "UNMAPPED";
   const ret = sector["return"];            // 응답의 필드 이름은 별칭 "return"이다 (docs/05 §3.2)
   const delta = rankDelta(sector.rank_delta);
@@ -65,10 +67,11 @@ function row(sector, max, selected, point, indexReturn) {
     <span class="name">${unmapped ? "" : `<span class="dot" style="background:${seriesColor(sector.color)}"></span>`}${escapeHtml(sector.name)}</span>
     <span class="bar-cell">${bar(ret, max)}</span>
     <span class="num ${signClass(ret)}">${pct(ret)}</span>
+    <span class="num hide-narrow ${cumPoint ? signClass(cumPoint.ret) : "muted"}">${pct(cumPoint?.ret)}</span>
     <span class="num hide-narrow hide-mid ${excess === null ? "muted" : signClass(excess)}">${pp(excess)}</span>
     <span class="num hide-narrow">${ratio(sector.base_weight, 2)}</span>
     <span class="num hide-narrow">${bp(sector.contribution)}</span>
-    <span class="num muted hide-narrow">${share}</span>
+    <span class="num muted hide-narrow hide-mid">${share}</span>
     <span class="num hide-narrow ${point ? signClass(point.disparity - 1) : "muted"}">${disparity(point?.disparity)}</span>
     <span class="num hide-narrow hide-mid ${point && point.ret !== null ? signClass(point.ret) : "muted"}">${pct(point?.ret)}</span>
     <span class="num hide-narrow ${delta.className}">${delta.text}</span>
@@ -77,12 +80,13 @@ function row(sector, max, selected, point, indexReturn) {
 }
 
 /**
- * 이격도 정렬은 화면이 한다. 이동평균을 서버에 두지 않으므로(docs/03 §14.3) /sectors/returns의 sort에는 없다.
+ * 누적수익·이격도 정렬은 화면이 한다. 두 값을 서버에 두지 않으므로(docs/03 §14.3, §16) /sectors/returns의 sort에는 없다.
  * 값이 없는 섹터는 뒤로 보내고, 미매핑 행은 늘 마지막이다.
  */
-function ordered(rows, sort, points) {
-  if (sort !== "disparity") return rows;
-  const value = (row) => points?.get(row.group_code)?.disparity ?? -Infinity;
+function ordered(rows, sort, points, cumPoints) {
+  if (sort !== "disparity" && sort !== "cumulative") return rows;
+  const value = (row) => (sort === "disparity" ? points?.get(row.group_code)?.disparity
+    : cumPoints?.get(row.group_code)?.ret) ?? -Infinity;
   return [...rows].sort((a, b) => {
     const unmapped = Number(a.group_code === "UNMAPPED") - Number(b.group_code === "UNMAPPED");
     return unmapped || value(b) - value(a);
@@ -94,19 +98,21 @@ function ordered(rows, sort, points) {
  * @param {any} payload /sectors/returns 응답
  * @param {string} selectedGroup
  * @param {{length: number, points: Map<string, any>}|null} ma 섹터별 이동평균·이격도 (ma.js)
- * @param {string} sort 정렬 기준. 이격도는 화면이 맡는다
+ * @param {string} sort 정렬 기준. 누적수익과 이격도는 화면이 맡는다
  * @param {{name: string, ret: number|null}} index 같은 기간 시장 지수 수익률 (docs/03 §15). 없으면 ret이 null이다
+ * @param {{length: number, points: Map<string, any>}|null} cum 섹터별 N기간 누적수익 (cum.js)
  */
-export function render(container, payload, selectedGroup, ma, sort, index) {
+export function render(container, payload, selectedGroup, ma, sort, index, cum) {
   const rows = payload.data.filter((s) => s.group_code !== "UNMAPPED" || (s.base_weight || 0) >= UNMAPPED_MIN_WEIGHT);
   if (!rows.length) {
     container.innerHTML = '<p class="empty">이 기간에 계산된 섹터가 없습니다.</p>';
     return;
   }
   const max = Math.max(...rows.map((s) => Math.abs(s["return"] || 0)), 1e-9);
-  container.innerHTML = head(max, sort, ma?.length, index)
-    + ordered(rows, sort, ma?.points)
-      .map((s) => row(s, max, s.group_code === selectedGroup, ma?.points.get(s.group_code), index?.ret ?? null))
+  container.innerHTML = head(max, sort, ma?.length, index, cum?.length)
+    + ordered(rows, sort, ma?.points, cum?.points)
+      .map((s) => row(s, max, s.group_code === selectedGroup, ma?.points.get(s.group_code), index?.ret ?? null,
+                      cum?.points.get(s.group_code)))
       .join("");
 }
 
