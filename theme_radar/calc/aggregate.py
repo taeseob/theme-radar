@@ -37,10 +37,15 @@ def universes(con: sqlite3.Connection, market: str) -> list[str]:
 
 
 def schemes(con: sqlite3.Connection, market: str) -> list[Scheme]:
-    """매핑이 적재된 스킴만 계산한다."""
+    """매핑이 적재된 스킴만 계산한다. 배타 스킴이 먼저 온다.
+
+    종목 수익률과 유니버스 통계는 첫 스킴의 계산 결과로 쓴다(`write_period`). 테마 스킴은 종목을 테마마다
+    한 번씩 넣어 계산하므로 유니버스 통계를 낼 수 없다.
+    """
     return [Scheme(code, bool(exclusive)) for code, exclusive in con.execute(
         "SELECT s.scheme_code, s.is_exclusive FROM classification_scheme s WHERE s.market_code = ? "
-        "AND EXISTS (SELECT 1 FROM security_group_map m WHERE m.scheme_code = s.scheme_code) ORDER BY s.scheme_code", (market,))]
+        "AND EXISTS (SELECT 1 FROM security_group_map m WHERE m.scheme_code = s.scheme_code) "
+        "ORDER BY s.is_exclusive DESC, s.scheme_code", (market,))]
 
 
 def _last_row(con: sqlite3.Connection, security_id: int, on_or_before: str):
@@ -94,10 +99,14 @@ def load_members(con: sqlite3.Connection, universe: str, period: Period) -> list
     return out
 
 
-def _groups_as_of(con: sqlite3.Connection, scheme: str, as_of: str) -> dict[int, str]:
-    return {sid: code for sid, code in con.execute(
-        "SELECT security_id, group_code FROM security_group_map WHERE scheme_code = ? AND valid_from <= ? AND ? <= valid_to",
-        (scheme, as_of, as_of))}
+def _groups_as_of(con: sqlite3.Connection, scheme: str, as_of: str) -> dict[int, list[str]]:
+    """종목별 소속 그룹. 배타 스킴이면 하나, 테마 스킴이면 여럿일 수 있다."""
+    out: dict[int, list[str]] = {}
+    for sid, code in con.execute(
+            "SELECT security_id, group_code FROM security_group_map WHERE scheme_code = ? AND valid_from <= ? AND ? <= valid_to "
+            "ORDER BY security_id, group_code", (scheme, as_of, as_of)):
+        out.setdefault(sid, []).append(code)
+    return out
 
 
 def _previous_ranks(con: sqlite3.Connection, universe: str, scheme: str, period: Period) -> dict[str, int]:
@@ -108,11 +117,15 @@ def _previous_ranks(con: sqlite3.Connection, universe: str, scheme: str, period:
 
 def compute_period(con: sqlite3.Connection, universe: str, scheme: Scheme, period: Period,
                    members: list[MemberBase]) -> engine.PeriodResult:
+    """배타 스킴은 종목마다 한 그룹(없으면 미매핑)에 넣는다. 테마 스킴은 종목을 속한 테마마다 한 번씩 넣고,
+    어느 테마에도 없는 종목은 뺀다. 그래서 테마 수익률은 테마끼리 독립이고, 미매핑 행은 생기지 않는다(docs/03 §4).
+    """
     mapping = _groups_as_of(con, scheme.scheme_code, period.base_date)
+    unmapped = [engine.UNMAPPED] if scheme.exclusive else []
     return engine.compute([engine.Member(
-        security_id=m.security_id, group_code=mapping.get(m.security_id, engine.UNMAPPED),
+        security_id=m.security_id, group_code=code,
         base_close_adj=m.base_close_adj, end_close_adj=m.end_close_adj, base_market_cap=m.base_market_cap,
-        incl_status=m.incl_status) for m in members])
+        incl_status=m.incl_status) for m in members for code in mapping.get(m.security_id, unmapped)])
 
 
 def write_period(con: sqlite3.Connection, universe: str, scheme: Scheme, period: Period, result: engine.PeriodResult,
@@ -197,12 +210,15 @@ def _intervals(rows) -> dict[int, list[tuple]]:
     return out
 
 
-def write_daily_caps(con: sqlite3.Connection, market: str, universe: str, scheme: str, start: str) -> int:
+def write_daily_caps(con: sqlite3.Connection, market: str, universe: str, scheme: str, start: str,
+                     exclusive: bool = True) -> int:
     """거래일마다 그날의 유니버스 구성원과 분류 매핑으로 그룹 시가총액을 더한다 (docs/03 §14).
 
     그날 시총이 없는 종목은 더하지 않는다. 보정하지 않고, 가격 외 이유의 변화는 특이사항으로 따로 본다.
+    테마 스킴은 한 종목을 속한 테마마다 더하고, 어느 테마에도 없는 종목은 미매핑으로 더하지 않는다.
     호출하는 쪽이 트랜잭션을 연다.
     """
+    unmapped = [engine.UNMAPPED] if exclusive else []
     con.execute("DELETE FROM group_daily_cap WHERE universe_code = ? AND scheme_code = ? AND trade_date >= ?",
                 (universe, scheme, start))
     days = [d for (d,) in con.execute("SELECT trade_date FROM trading_calendar WHERE market_code = ? AND trade_date >= ? "
@@ -219,7 +235,7 @@ def write_daily_caps(con: sqlite3.Connection, market: str, universe: str, scheme
             if not any(valid_from <= day <= valid_to for valid_from, valid_to in membership.get(security_id, ())):
                 continue
             codes = [code for code, valid_from, valid_to in mapping.get(security_id, ()) if valid_from <= day <= valid_to]
-            for code in codes or [engine.UNMAPPED]:
+            for code in codes or unmapped:
                 caps.setdefault(code, []).append(market_cap)
         rows.extend((universe, scheme, code, day, fsum(values), len(values)) for code, values in sorted(caps.items()))
     con.executemany("INSERT INTO group_daily_cap (universe_code, scheme_code, group_code, trade_date, market_cap, member_cnt) "
@@ -254,8 +270,8 @@ def run(con: sqlite3.Connection, run_state: Run, market: str, today: str, full: 
     if recalc_from:
         log(f"재계산 요청 {len(request_ids)}건, {recalc_from} 이후 기간을 다시 계산한다")
     scheme_list = schemes(con, market)
-    if not scheme_list:
-        raise SystemExit(f"{market} 분류 매핑이 없다. 먼저 load-mapping을 실행한다")
+    if not scheme_list or not scheme_list[0].exclusive:
+        raise SystemExit(f"{market} 섹터 분류 매핑이 없다. 먼저 섹터 스킴의 load-mapping을 실행한다")
 
     blocked_periods = []
     for universe in universes(con, market):
@@ -284,7 +300,7 @@ def run(con: sqlite3.Connection, run_state: Run, market: str, today: str, full: 
         for scheme in scheme_list:
             start = daily_cap_start(con, universe, scheme.scheme_code, targets, full)
             with transaction(con):
-                count = write_daily_caps(con, market, universe, scheme.scheme_code, start)
+                count = write_daily_caps(con, market, universe, scheme.scheme_code, start, scheme.exclusive)
             run_state.row_count += count
             log(f"{universe}/{scheme.scheme_code}: 섹터 일별 시총 {count}행 "
                 f"({'전 기간' if start == FIRST_DATE else f'{start} 이후'}, {time.monotonic() - started:.1f}s)")

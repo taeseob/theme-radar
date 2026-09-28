@@ -82,3 +82,22 @@ def test_reload_requests_recalculation(con):
     load_scheme(con, "GICS_IND", START)
     assert con.execute("SELECT market_code, scheme_code, reason FROM recalc_request").fetchall() == [
         ("US", "GICS_IND", "MAPPING")]
+
+
+def test_theme_scheme_puts_a_stock_in_several_themes(con):
+    """테마 스킴은 비배타다. 한 종목이 여러 테마 줄에 나오면 그만큼 매핑이 생긴다."""
+    spec = SCHEMES["THEME_KR"]
+    rows = _read_csv(DATA / spec.members_file)
+    with transaction(con):
+        con.executemany(
+            "INSERT INTO security (market_code, board, ticker, name_local, security_type, currency) "
+            "VALUES ('KR', 'KOSPI', ?, ?, 'COMMON', 'KRW')", sorted({(r["ticker"], r["company_name"]) for r in rows}))
+
+    result = load_scheme(con, "THEME_KR", START)
+    pairs = {(r["ticker"], r["theme_code"]) for r in rows}
+    assert (result.groups, result.mappings, result.missing_tickers) == (len(codes(spec)[0]), len(pairs), [])
+    assert result.source_batch == f"{spec.members_file}@{rows[0]['base_date']}"
+    per_stock = con.execute("SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM security_group_map "
+                            "WHERE scheme_code = 'THEME_KR' GROUP BY security_id)").fetchone()[0]
+    assert per_stock > 1
+

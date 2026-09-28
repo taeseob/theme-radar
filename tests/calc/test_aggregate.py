@@ -109,3 +109,57 @@ def test_recalc_request_is_marked_processed(con, market):
                     "VALUES ('KR', '2025-01-13', 'MAPPING', ?)", (NOW,))
     aggregate_all(con, full=False)
     assert con.execute("SELECT COUNT(*) FROM recalc_request WHERE processed_at IS NULL").fetchone()[0] == 0
+
+
+def add_themes(con, market):
+    """A는 두 테마(T1·T2)에, B는 T2에만 넣는다. 나머지는 어느 테마에도 없다."""
+    with transaction(con):
+        con.executemany("INSERT INTO classification_group (scheme_code, group_code, group_name, sort_order, valid_from) "
+                        "VALUES ('THEME_KR', ?, ?, ?, '2020-01-01')", [("T1", "테마1", 1), ("T2", "테마2", 2)])
+        con.executemany("INSERT INTO security_group_map (scheme_code, security_id, group_code, valid_from, source_batch) "
+                        "VALUES ('THEME_KR', ?, ?, '2020-01-01', 'theme.csv@2025-01-20')",
+                        [(market["A"], "T1"), (market["A"], "T2"), (market["B"], "T2")])
+
+
+def test_theme_scheme_counts_a_stock_in_every_theme_it_belongs_to(con, market):
+    """테마 스킴은 종목을 테마마다 한 번씩 넣는다. 유니버스 통계와 종목 수익률은 섹터 스킴에서만 쓴다."""
+    add_themes(con, market)
+    run = aggregate_all(con)
+    assert not run.blocked
+    assert [s.scheme_code for s in aggregate.schemes(con, "KR")] == ["WI26", "THEME_KR"]   # 배타 스킴이 먼저
+
+    themes = {r[0]: r[1:] for r in con.execute(
+        "SELECT group_code, ret, base_weight, contribution, rank_ret, member_cnt FROM group_period_stat "
+        "WHERE scheme_code = 'THEME_KR' AND period_type = 'W' AND period_id = '2025-W03'")}
+    assert set(themes) == {"T1", "T2"}                                   # 테마 밖 종목은 미매핑으로도 남지 않는다
+    assert themes["T1"][0] == pytest.approx(111 / 106 - 1)               # A 하나
+    a_cap, b_cap = 106 * 10_000_000, 50 * 1_000_000
+    assert themes["T2"][0] == pytest.approx((a_cap * (111 / 106 - 1) + b_cap * 0) / (a_cap + b_cap))
+    assert themes["T1"][1] is None and themes["T1"][2] is None           # 비배타 스킴은 기여도가 없다
+    assert (themes["T1"][3], themes["T2"][3]) == (1, 2)
+    assert (themes["T1"][4], themes["T2"][4]) == (1, 2)
+
+    universe = con.execute("SELECT member_cnt, unmapped_cap_ratio FROM universe_period_stat "
+                           "WHERE period_type = 'W' AND period_id = '2025-W03'").fetchone()
+    assert universe == (3, 0)                                            # 섹터 스킴 결과 그대로
+    assert con.execute("SELECT COUNT(*) FROM security_period_return WHERE period_type = 'W' AND period_id = '2025-W03'"
+                       ).fetchone()[0] == 4                              # A 중복 없음 (A·B·D·E)
+    assert not con.execute("SELECT COUNT(*) FROM validation_result WHERE rule_code = 'V-8'").fetchone()[0]
+
+
+def test_theme_daily_caps_add_a_stock_to_each_theme_and_skip_the_rest(con, market):
+    add_themes(con, market)
+    aggregate_all(con)
+    caps = {r[0]: r[1:] for r in con.execute(
+        "SELECT group_code, market_cap, member_cnt FROM group_daily_cap WHERE scheme_code = 'THEME_KR' "
+        "AND trade_date = '2025-01-08'")}
+    assert caps == {"T1": (1.04e9, 1), "T2": (1.04e9 + 5e7, 2)}
+
+
+def test_aggregate_needs_a_sector_scheme(con, market):
+    with transaction(con):
+        con.execute("DELETE FROM security_group_map")
+    add_themes(con, market)
+    with pytest.raises(SystemExit):
+        aggregate_all(con)
+

@@ -22,9 +22,18 @@ def schemes(universe: str, con: sqlite3.Connection = Depends(deps.get_con)) -> d
     scope = deps.scope(con, universe, "W")
     rows = con.execute(
         "SELECT s.scheme_code, s.scheme_name, s.scheme_type, s.is_exclusive, "
-        "(SELECT COUNT(*) FROM classification_group g WHERE g.scheme_code = s.scheme_code) AS group_count "
+        "(SELECT COUNT(*) FROM classification_group g WHERE g.scheme_code = s.scheme_code) AS group_count, "
+        "(SELECT MAX(m.source_batch) FROM security_group_map m WHERE m.scheme_code = s.scheme_code) AS source_batch "
         "FROM classification_scheme s WHERE s.market_code = ? ORDER BY s.scheme_code", (scope.market,))
-    return {"data": [{"scheme": r[0], "name": r[1], "type": r[2], "exclusive": bool(r[3]), "group_count": r[4]} for r in rows]}
+    return {"data": [{"scheme": r[0], "name": r[1], "type": r[2], "exclusive": bool(r[3]), "group_count": r[4],
+                      "as_of": _snapshot_date(r[5])} for r in rows]}
+
+
+def _snapshot_date(source_batch: str | None) -> str | None:
+    """매핑 적재 배치(`파일@기준일`)의 기준일. 분류 구성을 언제 확정했는지다 (docs/02 §9 S-14, S-20)."""
+    if not source_batch or "@" not in source_batch:
+        return None
+    return source_batch.rsplit("@", 1)[1]
 
 
 @router.get("/meta/groups")

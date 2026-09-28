@@ -34,7 +34,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from theme_radar.config import load_config, resolve_path  # noqa: E402
 
-SCHEMES = {"WI26": "KR_COMMON", "WI26_SUB": "KR_COMMON", "GICS": "US_SP500", "GICS_IND": "US_SP500"}
+# THEME_KR은 오늘 구성을 과거에 적용한 소급 계산이라 결과가 실제보다 좋게 나오기 쉽다 (docs/02 §9 S-20)
+SCHEMES = {"WI26": "KR_COMMON", "WI26_SUB": "KR_COMMON", "THEME_KR": "KR_COMMON",
+           "GICS": "US_SP500", "GICS_IND": "US_SP500"}
 QUANTILE = 0.2
 TOP_LOOKBACK = 13
 
@@ -171,13 +173,13 @@ def pullback_report(seqs, groups) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scheme", action="append", choices=sorted(SCHEMES),
-                        help="확인할 스킴. 여러 번 줄 수 있다 (기본: 네 개 전부)")
+                        help="확인할 스킴. 여러 번 줄 수 있다 (기본: 섹터 스킴 네 개. THEME_KR은 소급이라 따로 준다)")
     parser.add_argument("--report", choices=("momentum", "pullback", "all"), default="all")
     parser.add_argument("--period", choices=("W", "M"), default="W")
     args = parser.parse_args()
 
     conn = sqlite3.connect(resolve_path(load_config()["db"]["path"]))
-    for scheme in args.scheme or list(SCHEMES):
+    for scheme in args.scheme or [s for s in SCHEMES if s != "THEME_KR"]:
         seqs, groups = load(conn, SCHEMES[scheme], scheme, args.period)
         print(f"\n=== {SCHEMES[scheme]} {scheme} {args.period}  확정 {len(seqs)}기간, 그룹 {len(groups)}개 ===")
         print("수익은 같은 기간 전체 그룹 평균(동일가중) 대비")

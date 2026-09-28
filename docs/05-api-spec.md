@@ -90,14 +90,15 @@ Base URL: `/api/v1`
 ```json
 {
   "data": [
-    { "scheme": "WI26", "name": "WI26 산업분류", "type": "SECTOR", "exclusive": true,  "group_count": 26 },
-    { "scheme": "WI26_SUB", "name": "WI26 소분류", "type": "SECTOR", "exclusive": true,  "group_count": 48 },
-    { "scheme": "THEME_AI", "name": "AI 테마", "type": "THEME", "exclusive": false, "group_count": 1 }
+    { "scheme": "WI26", "name": "WI26 산업분류", "type": "SECTOR", "exclusive": true,  "group_count": 26, "as_of": "2026-09-11" },
+    { "scheme": "WI26_SUB", "name": "WI26 소분류", "type": "SECTOR", "exclusive": true,  "group_count": 48, "as_of": "2026-09-21" },
+    { "scheme": "THEME_KR", "name": "KR 테마", "type": "THEME", "exclusive": false, "group_count": 16, "as_of": "2026-09-28" }
   ]
 }
 ```
 
 - `exclusive = false`인 스킴은 기여도 분해 API에서 `contribution` 필드가 `null`이다.
+- `as_of`는 매핑 구성을 확정한 날(구성종목 파일의 `base_date`)이다. 매핑이 아직 없거나 파일에 기준일이 없으면 `null`이다. 이 날짜 전 기간은 그날 구성을 거꾸로 적용한 값이다([02 §9](02-domain-and-data-model.md#9-결정-기록) S-14, S-20). 화면은 테마 스킴에서 이 날짜를 알린다.
 - 한 시장에 **계층이 다른 배타 스킴**이 함께 온다(대분류/소분류, 섹터/산업). `group_count`가 계층의 굵기다([02 §9](02-domain-and-data-model.md#9-결정-기록) S-2).
 
 ### 2.3 `GET /meta/groups?universe=&scheme=`

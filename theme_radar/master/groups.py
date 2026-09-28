@@ -37,6 +37,9 @@ SCHEMES = {
                  "gics_sp500_constituents.csv", "sector_code", name_is_en=True),
     "GICS_IND": Spec("US", "gics_classification.csv", "industry_code", "industry_name",
                      "gics_sp500_constituents.csv", "industry_code", name_is_en=True),
+    # 비배타 스킴. 구성종목 파일에 한 종목이 테마마다 한 줄씩 나온다 (docs/02 §9 S-20)
+    "THEME_KR": Spec("KR", "theme_kr_list.csv", "theme_code", "theme_name",
+                     "theme_kr_constituents.csv", "theme_code", name_is_en=False),
 }
 
 
@@ -84,10 +87,12 @@ def load_scheme(con: sqlite3.Connection, scheme: str, start_date: str) -> LoadRe
                 (scheme, code, name, name if spec.name_is_en else None, order, colors.get(code), start_date))
         had_mapping = con.execute("SELECT COUNT(*) FROM security_group_map WHERE scheme_code = ?", (scheme,)).fetchone()[0]
         con.execute("DELETE FROM security_group_map WHERE scheme_code = ?", (scheme,))
+        # 테마 스킴은 같은 종목이 여러 줄에 나온다. 같은 (종목, 그룹)이 겹치면 한 번만 넣는다
+        pairs = dict.fromkeys((tickers[r["ticker"]], r[spec.member_code_col]) for r in members)
         con.executemany(
             "INSERT INTO security_group_map (scheme_code, security_id, group_code, valid_from, source_batch) VALUES (?, ?, ?, ?, ?)",
-            [(scheme, tickers[r["ticker"]], r[spec.member_code_col], start_date, source_batch) for r in members])
+            [(scheme, security_id, code, start_date, source_batch) for security_id, code in pairs])
         if had_mapping:
             con.execute("INSERT INTO recalc_request (market_code, scheme_code, from_date, reason, detail, requested_at) "
                         "VALUES (?, ?, ?, 'MAPPING', ?, ?)", (spec.market, scheme, start_date, source_batch, utc_now()))
-    return LoadResult(len(groups), len(members), [], source_batch)
+    return LoadResult(len(groups), len(pairs), [], source_batch)

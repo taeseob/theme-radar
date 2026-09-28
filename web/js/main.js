@@ -179,6 +179,18 @@ function cumRanks(current) {
 }
 
 /**
+ * 테마 스킴 안내 (docs/06 §2). 구성은 기준일 스냅샷이라 그 전 기간은 소급 계산이다.
+ * 섹터 스킴이면 빈 문자열이다.
+ */
+function themeNote(current) {
+  const scheme = cache.schemes.find((s) => s.scheme === current.scheme);
+  if (!scheme || scheme.type !== "THEME") return "";
+  return ` <span class="muted">테마 구성은 ${escapeHtml(scheme.as_of || "적재일")} 기준이다.`
+    + " 그 전 기간은 이 구성을 거꾸로 적용한 값이라 실제보다 좋아 보일 수 있다."
+    + " 한 종목이 여러 테마에 들어가므로 테마끼리 더하지 않고 시장 기여도도 없다.</span>";
+}
+
+/**
  * 이동평균 기준의 거르개 설명 (docs/06 §3.5). 둘 다 켜면 둘 다 만족한 섹터만 남는다.
  * 빈 문자열이면 거르지 않는다.
  */
@@ -228,6 +240,7 @@ function drawBump(current, periodId) {
     + (current.basis === "ma" ? ` <span class="muted">${length}기간 이동평균의 상승률이 기준이다.`
                                 + `${filter ? ` ${filter} 섹터만 본다.` : ""}</span>` : "")
     + (current.basis === "cum" ? ` <span class="muted">${length}기간 누적수익률이 기준이다.</span>` : "")
+    + themeNote(current)
     + (others ? ` <span class="muted">표시 기준 밖 ${others}개 섹터는 감춰져 있다.</span>` : "")
     + (focused.size ? ` <button type="button" class="ghost" id="focus-clear">강조 ${focused.size}개 해제</button>` : "");
   if (focused.size) $("focus-clear").addEventListener("click", () => state.update({ focus: "" }));

@@ -11,7 +11,9 @@
 | `raw/` | 수집 원본 (HTML 2건, PDF 1건, JSON 114건). 재파싱·감사용 | — |
 | `gics_classification.csv` | GICS 4단계 분류표 + 소분류 정의문 (미국 시장용, [§5](#5-gics_classificationcsv)) | 163 |
 | `gics_sp500_constituents.csv` | S&P 500 구성종목 → GICS 4단계 코드 매핑 ([§6](#6-gics_sp500_constituentscsv)) | 503 |
-| `group_colors.csv` | 그룹별 차트 고정 색상 (산업 계열 8색, [02 §3.4](../docs/02-domain-and-data-model.md#34-classification_scheme--classification_group)). 세분류 스킴은 상위 섹터의 계열을 그대로 받는다 | 159 |
+| `group_colors.csv` | 그룹별 차트 고정 색상 (산업 계열 8색, [02 §3.4](../docs/02-domain-and-data-model.md#34-classification_scheme--classification_group)). 세분류 스킴은 상위 섹터의 계열을 그대로 받는다 | 175 |
+| `theme_kr_list.csv` | 볼 KR 테마 목록 (`THEME_KR` 스킴의 분류표). **사람이 고친다** ([§8](#8-theme_kr_listcsv--theme_kr_constituentscsv)) | 16 |
+| `theme_kr_constituents.csv` | 테마별 구성종목 (기준일 2026-09-28, [§8](#8-theme_kr_listcsv--theme_kr_constituentscsv)) | 953 |
 | `theme_radar.sqlite3` | 애플리케이션 DB (git 제외, `python -m theme_radar init-db`로 생성) | — |
 
 수집 스크립트: [`scripts/fetch_wi26.py`](../scripts/fetch_wi26.py) — Python 3.9+ 표준 라이브러리만 사용한다.
@@ -419,3 +421,57 @@ WiseIndex 구성종목 API는 **소분류를 받지 않는다.** 소분류는 �
 - **맵핑 PDF는 2022-04판이고 WICS는 그 뒤로 개편됐다.** PDF에만 있는 코드 7개(신용평가서비스·결제관련서비스 포함)는
   현행 WICS에 없고, 현행에만 있는 코드 5개는 [§7.3](#73-source-컬럼--예외를-숨기지-않는다)의 브리지가 덮는다.
   WiseIndex가 PDF를 갱신하면 브리지를 지울 수 있다.
+
+## 8. `theme_kr_list.csv` / `theme_kr_constituents.csv`
+
+KR 테마 스킴 `THEME_KR`의 입력이다. 산업분류 옆에 두는 두 번째 층이고, 한 종목이 여러 테마에 속한다(비배타). 결정 근거는 [02 §9](../docs/02-domain-and-data-model.md#9-결정-기록) S-20이다.
+
+```bash
+python scripts/fetch_themes_kr.py            # 목록의 테마 구성종목을 받아 theme_kr_constituents.csv 를 쓴다
+python scripts/fetch_themes_kr.py --no-raw   # 원본 JSON 캐시 저장 생략
+.venv\Scripts\python -m theme_radar load-mapping --scheme THEME_KR
+.venv\Scripts\python -m theme_radar aggregate --market KR --full
+```
+
+### 8.1 출처
+
+| 데이터 | 출처 |
+| --- | --- |
+| 테마 목록 | `https://m.stock.naver.com/api/stocks/theme?page={n}&pageSize=100` (2026-09-28 기준 264개) |
+| 테마 구성종목 | `https://m.stock.naver.com/api/stocks/theme/{네이버 테마 번호}?page={n}&pageSize=100` |
+
+WI26 소분류가 쓰는 네이버 업종 API([§7](#7-wi26_wics_mapcsv--wi26_sub_constituentscsv))와 같은 모양이다. 원본은 `raw/naver_themes_{n}.json`, `raw/naver_theme_{번호}_{n}.json`에 남긴다.
+
+### 8.2 어느 테마를 보는가
+
+264개를 다 넣지 않는다. 비슷한 테마가 많아(2차전지만 7개) 다 넣으면 순위가 서로 겹쳐 흐름이 흐려진다. `theme_kr_list.csv`에 **여러 업종에 걸친 테마**를 골라 적었다. 산업분류 한 칸과 겹치는 테마(조선, 은행, 증권 등)는 뺐다.
+
+| 계열 | 테마 |
+| --- | --- |
+| 반도체 | HBM, 반도체 장비 |
+| 에너지·전력 | 원자력발전, 전력설비, 수소에너지, 2차전지 |
+| 산업재 | 방위산업, 조선기자재, 우주항공, 로봇 |
+| 소비·콘텐츠 | 화장품, 엔터테인먼트 |
+| 바이오 | 비만치료제, 바이오시밀러 |
+| 정책·금융 | 밸류업 지수, 스테이블코인 |
+
+- 테마 코드는 `T` + 네이버 테마 번호 세 자리다(`T536` HBM). 번호가 바뀌지 않는 한 코드도 바꾸지 않는다.
+- 화면 이름(`theme_name`)은 네이버 이름을 줄인 것이다. 원래 이름은 구성종목 파일의 `naver_theme_name`에 있다.
+- 테마를 더하거나 빼려면 이 파일을 고치고 위 명령을 다시 돌린다. 색은 `group_colors.csv`에 계열 색으로 한 줄 더한다(없으면 테스트가 실패한다).
+
+### 8.3 컬럼 (`theme_kr_constituents.csv`)
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `base_date` | 받은 날(KST). 테마 구성 확정일이다 |
+| `theme_code`, `theme_name` | 목록 파일의 값 |
+| `ticker`, `company_name` | 종목. 네이버 응답 중 주식(`stockEndType = stock`)만 남긴다 |
+| `naver_theme_no`, `naver_theme_name` | 네이버 원래 번호와 이름 |
+
+### 8.4 주의사항
+
+- **스냅샷이다.** 적재하면 `base_date` 구성을 수집 시작일부터 전 기간에 적용한다. 테마 목록은 대개 이미 오른 뒤에 만들어지고 오른 종목이 더해지므로, `base_date` 전 기간의 테마 수익률은 실제보다 좋아 보인다. 화면은 테마를 고르면 이 날짜를 알린다.
+- 다시 받으면 구성이 바뀐다. 이력을 남기지 않고 매핑을 통째로 바꾼다(S-14와 같다). 확정일 뒤 흐름을 쌓아 보려면 **자주 다시 받지 않는다.**
+- 2026-09-28 기준 16개 테마, 953줄, 765종목이다. 모두 종목 마스터에 있었다.
+- 네이버 테마 목록에 같은 테마가 두 번 나오는 경우가 있다(보안주(정보), 생명보험, 아프리카 돼지열병). 스크립트는 번호로 합친다.
+

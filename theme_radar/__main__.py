@@ -44,7 +44,7 @@ def cmd_load_mapping(args: argparse.Namespace, config: dict[str, Any]) -> int:
         print(f"적재하지 않았다. 종목 마스터에 없는 티커 {len(result.missing_tickers)}개: {result.missing_tickers[:30]}")
         print(f"먼저 .venv\\Scripts\\python -m theme_radar prices universe --market {SCHEMES[args.scheme].market}을 실행한다")
         return 1
-    print(f"{args.scheme}: 그룹 {result.groups}개, 매핑 {result.mappings}종목 ({result.source_batch})")
+    print(f"{args.scheme}: 그룹 {result.groups}개, 매핑 {result.mappings}건 ({result.source_batch})")
     return 0
 
 

@@ -72,6 +72,7 @@ user_agent = "theme-radar 본인이메일@example.com"
 .venv\Scripts\python -m theme_radar load-mapping --scheme WI26_SUB
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS
 .venv\Scripts\python -m theme_radar load-mapping --scheme GICS_IND
+.venv\Scripts\python -m theme_radar load-mapping --scheme THEME_KR   # KR 테마 (선택)
 .venv\Scripts\python -m theme_radar prices backfill --market KR
 .venv\Scripts\python -m theme_radar prices backfill --market US
 .venv\Scripts\python -m theme_radar aggregate --market KR --full

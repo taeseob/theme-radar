@@ -68,6 +68,9 @@ def check(result: PeriodResult, period_type: str, exclusive_scheme: bool = True)
         out.append(Violation("V-8", "WARN", result.universe.unmapped_cap_ratio, UNMAPPED_CAP_LIMIT,
                              f"분류 미매핑 시총 비중 {result.universe.unmapped_cap_ratio:.2%}"))
 
+    # 종목 수익률 이상치는 유니버스 단위 검사다. 테마 스킴은 같은 종목을 여러 번 넣으므로 섹터 스킴에서만 본다
+    if not exclusive_scheme:
+        return out
     limit = RETURN_LIMIT[period_type]
     outliers = [(m.security_id, round(m.ret, 4)) for m in included if abs(m.ret) > limit]
     if outliers:
